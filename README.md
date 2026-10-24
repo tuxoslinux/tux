@@ -11,9 +11,12 @@ It has been developed using [Claude](https://claude.ai)'s Opus 5.5 model.
 ## Build status
 
 ```
-95% from the finish line...
+30% from the finish line...
 
--Only replaced the visual info from Artix's branding to TuxOS's branding
+-Replaced the visual info from Artix's branding to TuxOS's branding
+-Graphical Installer
+-9 DE
+-Custom kernel
 ```
 
 ## Having issues?
