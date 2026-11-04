@@ -11,12 +11,14 @@ It has been developed using [Claude](https://claude.ai)'s Opus 5.5 model.
 ## Build status
 
 ```
-30% from the finish line...
+15% from the finish line...
 
 -Replaced the visual info from Artix's branding to TuxOS's branding
 -Graphical Installer
 -9 DE
 -Custom kernel
+-BORE Scheduler and custom gaming-optimized configs
+-***Only thing left is to make a custom desktop environment
 ```
 
 ## Having issues?
