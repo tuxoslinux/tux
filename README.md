@@ -4,7 +4,7 @@ TuxOS is a Linux distribution based on the CachyOS kernel that uses dinit as its
 
 *Arch: It actually uses Artix Linux as the base, which is based on Arch.
 
-## It is still in the build phase and is not usable!
+## It is still in the build phase and is almost fully usable!
 
 It has been developed using [Claude](https://claude.ai)'s Opus 5.5 model.
 
