@@ -1,0 +1,11 @@
+#!/bin/sh
+# SSDs: tell the drive which blocks are free (keeps writes fast). Trimming
+# can hold up disk access for seconds on some drives, so it waits while a
+# game runs (game mode, tuxos-gamed): checked every 5 minutes, for at most
+# 12 hours.
+i=0
+while [ "$(cat /run/tuxos-gamed/mode 2>/dev/null)" = on ] && [ "${i}" -lt 144 ]; do
+    sleep 300
+    i=$((i + 1))
+done
+exec /usr/bin/fstrim --all --quiet-unsupported

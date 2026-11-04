@@ -1,0 +1,148 @@
+#!/bin/bash
+# tuxos-gamed: automatic game mode (started by the dinit service
+# tuxos-gamed). No launch options needed: while a game runs it
+#   - switches to the "performance" power profile (highest clocks), and
+#   - optionally runs a sched-ext CPU scheduler (GAME_SCHEDULER; by default
+#     the kernel's BORE scheduler stays, which did best in TuxOS'
+#     benchmark).
+# Everything goes back as soon as the last game ends. Settings:
+# /etc/tuxos/performance.conf. It also ends a login screen that SDDM left
+# running after a login (reap_greeter).
+set -u
+
+GAME_MODE=yes
+GAME_SCHEDULER=none
+GAME_SCHEDULER_MODE=gaming
+GAME_POWER_PROFILE=performance
+DESKTOP_POWER_PROFILE=performance
+# shellcheck source=/etc/tuxos/performance.conf
+[[ -r /etc/tuxos/performance.conf ]] && . /etc/tuxos/performance.conf
+
+state=/run/tuxos-gamed
+mkdir -p "${state}"
+log() { printf 'tuxos-gamed: %s\n' "$*"; }
+
+# Steam games (Steam's reaper), Proton anywhere (Steam, Lutris, Heroic via
+# umu), and games in gamescope
+game_running() {
+    pgrep -f -- 'SteamLaunch AppId=|proton waitforexitandrun|umu-run ' >/dev/null && return 0
+    pgrep -x 'gamescope|gamescope-wl' >/dev/null
+}
+
+# power-profiles-daemon over D-Bus (powerprofilesctl needs Python)
+ppd() { # method args...
+    gdbus call --system --dest org.freedesktop.UPower.PowerProfiles \
+        --object-path /org/freedesktop/UPower/PowerProfiles "$@" 2>/dev/null
+}
+ppd_get() { # property: prints its value
+    ppd --method org.freedesktop.DBus.Properties.Get org.freedesktop.UPower.PowerProfiles "$1"
+}
+ppd_set_profile() { # profile
+    ppd --method org.freedesktop.DBus.Properties.Set org.freedesktop.UPower.PowerProfiles \
+        ActiveProfile "<'$1'>" >/dev/null
+}
+
+old_profile=""
+scx_started=0
+
+enter() {
+    log "game started: game mode on"
+    echo on > "${state}/mode"
+    if [[ "${GAME_SCHEDULER}" != none ]] && command -v scxctl >/dev/null; then
+        # leave a scheduler someone started by hand alone
+        if scxctl get 2>/dev/null | grep -qi 'no scx scheduler running'; then
+            if scxctl start --sched "${GAME_SCHEDULER#scx_}" --mode "${GAME_SCHEDULER_MODE}" >/dev/null 2>&1; then
+                scx_started=1
+                log "scheduler ${GAME_SCHEDULER} (${GAME_SCHEDULER_MODE}) on"
+            else
+                log "could not start ${GAME_SCHEDULER}; the kernel scheduler stays"
+            fi
+        fi
+    fi
+    # the profile only if this computer offers it (not in virtual machines)
+    if [[ -n "${GAME_POWER_PROFILE}" ]] \
+       && ppd_get Profiles | grep -q "'Profile': <'${GAME_POWER_PROFILE}'>"; then
+        old_profile="$(ppd_get ActiveProfile | sed -n "s/^(<'\(.*\)'>,)$/\1/p")"
+        if [[ "${old_profile}" != "${GAME_POWER_PROFILE}" ]] && ppd_set_profile "${GAME_POWER_PROFILE}"; then
+            log "power profile ${GAME_POWER_PROFILE} (was ${old_profile:-unknown})"
+        else
+            old_profile=""
+        fi
+    fi
+}
+
+leave() {
+    if (( scx_started )); then
+        scxctl stop >/dev/null 2>&1
+        scx_started=0
+    fi
+    # back to the profile from before, unless someone changed it meanwhile
+    if [[ -n "${old_profile}" ]]; then
+        if ppd_get ActiveProfile | grep -q "'${GAME_POWER_PROFILE}'"; then
+            ppd_set_profile "${old_profile}"
+        fi
+        old_profile=""
+    fi
+    echo off > "${state}/mode"
+    log "game ended: game mode off"
+}
+
+# Desktop PCs (no battery) run with the "performance" profile from the
+# first boot on: the CPU reacts at full speed to every frame, not only in
+# game mode. Done once; a choice made later in the power settings stays.
+desktop_profile() {
+    local marker=/var/lib/tuxos/desktop-power-profile i
+    [[ -n "${DESKTOP_POWER_PROFILE:-}" && ! -e "${marker}" ]] || return 0
+    mkdir -p "${marker%/*}"
+    if compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
+        : > "${marker}"
+        return 0
+    fi
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        ppd_get Profiles >/dev/null && break
+        sleep 1
+    done
+    if ppd_get Profiles | grep -q "'Profile': <'${DESKTOP_POWER_PROFILE}'>" \
+       && ppd_set_profile "${DESKTOP_POWER_PROFILE}"; then
+        log "desktop PC: power profile ${DESKTOP_POWER_PROFILE}"
+    fi
+    : > "${marker}"
+}
+
+# SDDM stops its login screen after a login, but under dinit/elogind the
+# greeter sometimes hangs while quitting and stays (about 90 MB of RAM for
+# the whole session). Its helper is gone by then, so such a greeter has
+# init as its parent: end those.
+reap_greeter() {
+    local pid
+    for pid in $(pgrep -x 'sddm-greeter-qt|sddm-greeter'); do
+        if [[ "$(ps -o ppid= -p "${pid}" | tr -d ' ')" == 1 ]]; then
+            kill -KILL "${pid}" 2>/dev/null && log "ended a leftover login screen (pid ${pid})"
+        fi
+    done
+}
+
+trap 'leave; exit 0' TERM INT
+echo off > "${state}/mode"
+desktop_profile
+[[ "${GAME_MODE}" == yes ]] || { log "off in /etc/tuxos/performance.conf"; exec sleep infinity; }
+
+in_game=0 seen=0 gone=0 tick=0
+while :; do
+    (( ++tick % 5 == 0 )) && reap_greeter
+    if game_running; then
+        gone=0
+        # two checks in a row: launchers that only flash past do not count
+        if (( !in_game && ++seen >= 2 )); then
+            enter; in_game=1
+        fi
+    else
+        seen=0
+        # a few seconds' grace for games that restart themselves
+        if (( in_game && ++gone >= 3 )); then
+            leave; in_game=0
+        fi
+    fi
+    sleep 2 &
+    wait $!
+done

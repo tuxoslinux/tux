@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TuxOS desktop menu for labwc (right-click on the desktop) -->
+<openbox_menu>
+  <menu id="root-menu" label="">
+    <item label="Applications">
+      <action name="Execute" command="wofi --show drun" />
+    </item>
+    <item label="Terminal">
+      <action name="Execute" command="foot" />
+    </item>
+    <item label="Files">
+      <action name="Execute" command="thunar" />
+    </item>
+    <item label="Web browser">
+      <action name="Execute" command="firefox" />
+    </item>
+    <separator />
+    <item label="Reload settings">
+      <action name="Reconfigure" />
+    </item>
+    <item label="Log out">
+      <action name="Exit" />
+    </item>
+  </menu>
+</openbox_menu>

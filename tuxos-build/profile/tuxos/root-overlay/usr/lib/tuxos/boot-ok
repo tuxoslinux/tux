@@ -1,0 +1,9 @@
+#!/bin/sh
+# The system started (dinit service tuxos-bootok): GRUB keeps its menu
+# hidden at the next start. GRUB sets tuxos_booting=1 at every start and
+# shows the menu when it is still set (see /etc/grub.d/31_tuxos-menu).
+env=/boot/grub/grubenv
+if grep -q '^tuxos_booting=1' "${env}" 2>/dev/null; then
+    grub-editenv "${env}" unset tuxos_booting
+fi
+exit 0

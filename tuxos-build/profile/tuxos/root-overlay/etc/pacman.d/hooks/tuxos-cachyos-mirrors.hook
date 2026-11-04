@@ -1,0 +1,12 @@
+# Keep the mirror lists of the CPU-optimized CachyOS repositories (see
+# tuxos-tune repos) in step with cachyos-mirrorlist.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = cachyos-mirrorlist
+
+[Action]
+Description = Updating TuxOS' optimized CachyOS mirror lists...
+When = PostTransaction
+Exec = /usr/bin/tuxos-tune mirrors

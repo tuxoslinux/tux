@@ -1,0 +1,34 @@
+#!/bin/bash
+# One-time TuxOS tweaks at boot (dinit service tuxos-tweaks). Settings:
+# /etc/tuxos/performance.conf.
+
+DESKTOP_NVME_POWER_SAVING=no
+# shellcheck source=/etc/tuxos/performance.conf
+[[ -r /etc/tuxos/performance.conf ]] && . /etc/tuxos/performance.conf
+
+# tracefs, as systemd mounts it: BPF tools that attach to tracepoints
+# (ananicy-cpp, profilers) need it
+if ! mountpoint -q /sys/kernel/tracing; then
+    mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null
+fi
+
+# PCI latency timers: short for every device so none can hog the bus,
+# longer for sound cards (no gaps in the sound)
+if command -v setpci >/dev/null; then
+    setpci -s '*:*' latency_timer=20 2>/dev/null
+    setpci -s '0:0' latency_timer=0 2>/dev/null
+    setpci -d '*:*:04xx' latency_timer=80 2>/dev/null
+fi
+
+# Desktop PCs (no battery): NVMe drives stay in their working power state.
+# Their deeper idle states can take up to tens of milliseconds to wake
+# from, which shows as a hitch when a game loads data after a quiet moment;
+# a latency tolerance of 0 turns those transitions (APST) off. Costs a
+# watt or two; laptops keep them.
+if [[ "${DESKTOP_NVME_POWER_SAVING}" == no ]] \
+   && ! compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
+    for f in /sys/class/nvme/nvme*/power/pm_qos_latency_tolerance_us; do
+        [[ -w "${f}" ]] && echo 0 > "${f}" 2>/dev/null
+    done
+fi
+exit 0

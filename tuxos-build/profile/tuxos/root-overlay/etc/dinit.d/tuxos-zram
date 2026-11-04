@@ -1,0 +1,7 @@
+# Compressed swap in RAM (see /usr/lib/tuxos/zram-setup)
+type         = scripted
+command      = /usr/lib/tuxos/zram-setup start
+stop-command = /usr/lib/tuxos/zram-setup stop
+depends-on   = early-fs-local.target
+after        = sysctl
+before       = local.target

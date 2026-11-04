@@ -1,0 +1,44 @@
+// TuxOS Waybar for labwc
+{
+    "layer": "top",
+    "position": "top",
+    "height": 32,
+    "modules-left": ["custom/tuxos", "wlr/taskbar"],
+    "modules-center": ["clock"],
+    "modules-right": ["pulseaudio", "network", "battery", "tray"],
+
+    "custom/tuxos": {
+        "format": " TuxOS",
+        "tooltip": false,
+        "on-click": "wofi --show drun"
+    },
+    "wlr/taskbar": {
+        "format": "{icon} {title:.24}",
+        "icon-size": 16,
+        "on-click": "activate",
+        "on-click-middle": "close"
+    },
+    "clock": {
+        "format": "{:%a %d %b  %H:%M}",
+        "tooltip": false
+    },
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": " muted",
+        "format-icons": { "default": ["", "", ""] },
+        "on-click": "pavucontrol"
+    },
+    "network": {
+        "format-wifi": " {essid}",
+        "format-ethernet": " wired",
+        "format-disconnected": " offline",
+        "tooltip-format": "{ifname}: {ipaddr}"
+    },
+    "battery": {
+        "format": "{icon} {capacity}%",
+        "format-icons": ["", "", "", "", ""]
+    },
+    "tray": {
+        "spacing": 8
+    }
+}

@@ -1,0 +1,6 @@
+# The system got as far as the login screen: no boot menu at the next start
+# (see /usr/lib/tuxos/boot-ok)
+type    = scripted
+command = /usr/lib/tuxos/boot-ok
+restart = false
+after   = login.target

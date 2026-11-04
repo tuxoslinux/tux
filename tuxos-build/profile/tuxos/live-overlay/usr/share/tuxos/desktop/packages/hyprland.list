@@ -1,0 +1,29 @@
+# Hyprland (Wayland, tiling)
+hyprland
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+swaybg
+hyprpolkitagent
+waybar
+wofi
+foot
+mako
+thunar
+thunar-archive-plugin
+mousepad
+ristretto
+atril
+xarchiver
+pavucontrol
+network-manager-applet
+blueman
+grim
+slurp
+brightnessctl
+qt5-wayland
+qt6-wayland
+otf-font-awesome
+adwaita-icon-theme
+libnotify
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

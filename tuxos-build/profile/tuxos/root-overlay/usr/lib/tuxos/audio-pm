@@ -1,0 +1,38 @@
+#!/bin/bash
+# Sound card power saving (snd_hda_intel) off on mains power, back on
+# battery. Run by /usr/lib/udev/rules.d/20-tuxos-audio-pm.rules:
+#
+#   audio-pm init|ac|battery
+param=/sys/module/snd_hda_intel/parameters/power_save
+saved=/run/udev/tuxos-hda-powersave
+
+on_mains() {
+    local type online
+    for type in /sys/class/power_supply/*/type; do
+        [[ -f "${type}" && "$(<"${type}")" == Mains ]] || continue
+        online="$(<"${type%/type}/online")" 2>/dev/null || continue
+        [[ "${online}" == 1 ]] || return 1
+    done
+    return 0
+}
+
+save() {
+    local cur
+    cur="$(<"${param}")"
+    if [[ "${cur}" != 0 ]]; then
+        echo "${cur}" > "${saved}"
+    fi
+}
+
+case "$1" in
+    init)
+        on_mains || exit 0
+        save; echo 0 > "${param}" ;;
+    ac)
+        save; echo 0 > "${param}" ;;
+    battery)
+        value="$(cat "${saved}" 2>/dev/null)"
+        echo "${value:-10}" > "${param}" ;;
+    *)
+        echo "usage: $0 init|ac|battery" >&2; exit 1 ;;
+esac

@@ -1,0 +1,13 @@
+# Cinnamon
+cinnamon
+nemo
+gnome-terminal
+xed
+xreader
+xviewer
+file-roller
+blueman
+papirus-icon-theme
+adwaita-fonts
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

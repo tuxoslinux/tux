@@ -1,0 +1,90 @@
+#!/bin/bash
+# tuxos-gaming: installs the TuxOS gaming apps.
+#
+#   tuxos-gaming                  install them (as root)
+#   tuxos-gaming --list           show the packages
+#
+# Used by the TuxOS installer (page "Gaming"):
+#   tuxos-gaming --root DIR --mode yes|no
+#
+# Steam, Proton-CachyOS (Proton with CachyOS' patches: FSR 4, NTSYNC,
+# Wayland), umu and ProtonPlus for games outside Steam, MangoHud (FPS
+# overlay), gamemode and gamescope, plus the 32-bit graphics drivers games
+# need. The system tuning (game mode, schedulers, zram, ...) is part of
+# every TuxOS install already.
+set -uo pipefail
+
+packages=(
+    steam ttf-liberation
+    # the native build: the Steam Linux Runtime build (-slr) needs Arch's
+    # lib32-systemd, which cannot replace TuxOS' lib32-udev
+    proton-cachyos-native umu-launcher protonplus
+    mangohud lib32-mangohud
+    gamemode lib32-gamemode
+    gamescope
+    # Vulkan for 64-bit and 32-bit games (NVIDIA's come with tuxos-drivers)
+    vulkan-radeon vulkan-intel lib32-mesa lib32-vulkan-radeon lib32-vulkan-intel
+)
+
+root="" mode=yes
+while (( $# )); do
+    case "$1" in
+        --root) root="$2"; shift 2 ;;
+        --mode) mode="$2"; shift 2 ;;
+        --list) printf '%s\n' "${packages[@]}"; exit 0 ;;
+        *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    esac
+done
+
+log() { printf 'tuxos-gaming: %s\n' "$*"; }
+in_root() { if [[ -n "${root}" ]]; then chroot "${root}" "$@"; else "$@"; fi; }
+
+if [[ "${mode}" != yes ]]; then
+    log "gaming apps not selected (install them later with: sudo tuxos-gaming)"
+    exit 0
+fi
+[[ ${EUID} -eq 0 ]] || { log "run as root (sudo tuxos-gaming)"; exit 1; }
+
+# The new system has no DNS setup of its own yet during the installation
+resolv_lent=0
+if [[ -n "${root}" ]]; then
+    if [[ -e "${root}/etc/resolv.conf" || -L "${root}/etc/resolv.conf" ]]; then
+        mv "${root}/etc/resolv.conf" "${root}/etc/resolv.conf.tuxos-gaming"
+    fi
+    cp -L /etc/resolv.conf "${root}/etc/resolv.conf"
+    resolv_lent=1
+fi
+cleanup() {
+    [[ -n "${root}" ]] && in_root gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1
+    if (( resolv_lent )); then
+        rm -f "${root}/etc/resolv.conf"
+        if [[ -e "${root}/etc/resolv.conf.tuxos-gaming" || -L "${root}/etc/resolv.conf.tuxos-gaming" ]]; then
+            mv "${root}/etc/resolv.conf.tuxos-gaming" "${root}/etc/resolv.conf"
+        fi
+    fi
+}
+trap cleanup EXIT
+
+log "installing ${#packages[@]} gaming packages (downloaded from the internet)"
+for try in 1 2 3; do
+    if in_root pacman -Syu --noconfirm --needed "${packages[@]}"; then
+        break
+    fi
+    if (( try == 3 )); then
+        log "downloading the gaming apps failed; try again later with: sudo tuxos-gaming"
+        exit 1
+    fi
+    log "download failed, trying again (${try}/3)"
+    sleep 10
+done
+
+# gamemode: raise the game's CPU and I/O priority (members of group gamemode)
+cat > "${root}/etc/gamemode.ini" <<'EOF'
+; TuxOS gamemode settings (gamemoderun %command%). TuxOS also switches to
+; game mode by itself for every game (tuxos-gamed), with or without this.
+[general]
+renice=10
+ioprio=0
+inhibit_screensaver=1
+EOF
+log "done"

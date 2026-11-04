@@ -1,0 +1,25 @@
+# Live session: an installation must not be interrupted. Closing a laptop's
+# lid or leaving the computer alone does nothing, and the screen stays on.
+[AC][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
+[AC][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0
+
+[Battery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
+[Battery][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0
+
+[LowBattery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
+[LowBattery][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0

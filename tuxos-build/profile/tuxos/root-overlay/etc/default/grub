@@ -1,0 +1,33 @@
+# GRUB boot loader configuration
+
+GRUB_DEFAULT="0"
+# no menu: TuxOS starts right away. Hold Shift while the computer starts to
+# see the menu; with another operating system installed (dual boot) it
+# shows for 5 seconds (/etc/grub.d/31_tuxos-menu).
+GRUB_TIMEOUT="0"
+GRUB_TIMEOUT_STYLE="hidden"
+GRUB_DISTRIBUTOR="TuxOS"
+# quiet boot, no boot animation, no kernel or service messages (remove
+# "loglevel=3 --quiet" to see them). Performance: no lockup watchdogs
+# (nowatchdog: fewer timer interrupts on every CPU), no zswap (TuxOS
+# swaps to zram) and no split-lock detection (games that use split locks
+# are not trapped and slowed down).
+GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 --quiet nowatchdog zswap.enabled=0 split_lock_detect=off"
+GRUB_CMDLINE_LINUX="net.ifnames=0"
+
+# Preload both GPT and MBR modules so that they are not missed
+GRUB_PRELOAD_MODULES="part_gpt part_msdos"
+
+GRUB_TERMINAL_INPUT="console"
+# graphical terminal, needed for the theme
+GRUB_TERMINAL_OUTPUT="gfxterm"
+GRUB_GFXMODE="1024x768,800x600,auto"
+GRUB_GFXPAYLOAD_LINUX="keep"
+
+GRUB_DISABLE_RECOVERY="true"
+GRUB_DISABLE_LINUX_RECOVERY="true"
+
+GRUB_THEME="/usr/share/grub/themes/tuxos/theme.txt"
+
+# Probe for other operating systems (dual boot)
+GRUB_DISABLE_OS_PROBER="false"

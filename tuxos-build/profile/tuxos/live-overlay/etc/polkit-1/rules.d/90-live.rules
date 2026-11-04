@@ -1,0 +1,8 @@
+/* Live installer: the installer runs as root and members of the wheel
+ * group may run any action without password authentication.
+ */
+polkit.addRule(function(action, subject) {
+    if (subject.user == "root" || subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

@@ -1,0 +1,10 @@
+NAME="TuxOS"
+PRETTY_NAME="TuxOS"
+ID=tuxos
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;245;184;0"
+HOME_URL="https://github.com/tuxoslinux/tux"
+SUPPORT_URL="https://discord.gg/jvGzaWEB77"
+BUG_REPORT_URL="https://github.com/tuxoslinux/tux/issues"
+LOGO=tuxos-logo

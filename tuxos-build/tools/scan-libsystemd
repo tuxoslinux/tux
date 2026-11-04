@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Lists packages whose programs or libraries need libsystemd.so.0.
+
+    scan-libsystemd DIR_OF_PACKAGES...
+
+TuxOS has no systemd: Arch packages linked against libsystemd.so.0 only
+work through the libelogind compatibility link (see install-desktop), so
+every package listed here needs checking.
+"""
+import os
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+ELF = b'\x7fELF'
+
+
+def needs_libsystemd(path):
+    out = subprocess.run(['readelf', '-d', path], capture_output=True, text=True).stdout
+    return 'libsystemd.so.0' in out
+
+
+def scan(pkg):
+    hits = []
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(['bsdtar', '-xf', pkg, '-C', tmp], capture_output=True)
+        for root, _, files in os.walk(tmp):
+            for f in files:
+                p = os.path.join(root, f)
+                if os.path.islink(p) or not os.path.isfile(p):
+                    continue
+                with open(p, 'rb') as fh:
+                    if fh.read(4) != ELF:
+                        continue
+                if needs_libsystemd(p):
+                    hits.append(os.path.relpath(p, tmp))
+    return hits
+
+
+found = 0
+for d in sys.argv[1:]:
+    for name in sorted(os.listdir(d)):
+        if not name.endswith('.pkg.tar.zst'):
+            continue
+        hits = scan(os.path.join(d, name))
+        if hits:
+            found += 1
+            print(name)
+            for h in hits:
+                print('   ', h)
+print(f'{found} package(s) need libsystemd.so.0')

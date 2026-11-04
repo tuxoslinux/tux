@@ -1,0 +1,6 @@
+# sched-ext scheduler loader (scxctl, tuxos-gamed)
+type            = process
+command         = /usr/bin/scx_loader
+depends-on      = dbus
+smooth-recovery = true
+logfile         = /var/log/dinit/scx_loader.log

@@ -1,0 +1,21 @@
+# Budgie (Wayland, runs on labwc; from Arch [extra], works with elogind)
+budgie-desktop
+budgie-desktop-view
+budgie-backgrounds
+budgie-control-center
+nemo
+nemo-fileroller
+file-roller
+gnome-terminal
+gnome-text-editor
+eog
+evince
+pavucontrol
+network-manager-applet
+blueman
+papirus-icon-theme
+gnome-themes-extra
+qt6-wayland
+adwaita-fonts
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

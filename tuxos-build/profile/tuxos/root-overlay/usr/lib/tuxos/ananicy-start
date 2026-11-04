@@ -1,0 +1,16 @@
+#!/bin/bash
+# Starts ananicy-cpp (dinit service ananicy-cpp).
+#
+# - Its BPF process listener attaches to the kernel's scheduler tracepoints,
+#   which it finds in tracefs; systemd mounts tracefs at boot, dinit does
+#   not ("failed to attach BPF programs" otherwise).
+# - It marks itself as running with /dev/shm/AnanicyCppMutex. A run that
+#   crashed leaves the file behind, and every later start then says
+#   "already running": remove it when no ananicy-cpp runs.
+if ! mountpoint -q /sys/kernel/tracing; then
+    mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null
+fi
+if ! pgrep -x ananicy-cpp >/dev/null; then
+    rm -f /dev/shm/AnanicyCppMutex
+fi
+exec /usr/bin/ananicy-cpp start

@@ -1,0 +1,7 @@
+[Desktop Entry]
+# TuxOS: the GTK global-menu proxy only serves the "Global Menu" widget,
+# which is not on the default panel (saves about 30 MB per session). Delete
+# this file if you add that widget.
+Type=Application
+Name=gmenudbusmenuproxy
+Hidden=true

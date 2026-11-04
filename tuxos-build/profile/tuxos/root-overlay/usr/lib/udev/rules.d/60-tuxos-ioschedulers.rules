@@ -1,0 +1,14 @@
+# TuxOS: the best I/O scheduler for each kind of disk
+# hard disks: BFQ keeps the desktop responsive while the disk is busy
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", \
+    ATTR{queue/scheduler}="bfq"
+# SATA SSDs and SD/eMMC: mq-deadline
+ACTION=="add|change", KERNEL=="sd[a-z]*|mmcblk[0-9]*", ATTR{queue/rotational}=="0", \
+    ATTR{queue/scheduler}="mq-deadline"
+# NVMe: no scheduler. The drive queues and orders requests itself; any
+# scheduler only adds CPU time to every request (CachyOS does the same)
+ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/rotational}=="0", \
+    ATTR{queue/scheduler}="none"
+# virtual machine disks: the host's scheduler already orders the requests
+ACTION=="add|change", KERNEL=="vd[a-z]*", ENV{DEVTYPE}=="disk", \
+    ATTR{queue/scheduler}="none"

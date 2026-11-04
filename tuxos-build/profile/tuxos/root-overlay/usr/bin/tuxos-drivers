@@ -1,0 +1,335 @@
+#!/bin/bash
+# tuxos-drivers: detects the graphics card, Wi-Fi card and virtual machine
+# and installs the best official drivers for them.
+#
+#   tuxos-drivers                 install the recommended drivers (as root)
+#   tuxos-drivers --opensource    install only open-source drivers
+#   tuxos-drivers --list          show the detected hardware and the plan
+#   tuxos-drivers --dry-run       show what would be installed, change nothing
+#
+# Used by the TuxOS installer as well:
+#   tuxos-drivers --root DIR --mode recommended|opensource
+#       install into the system mounted at DIR (run from the live system)
+#   tuxos-drivers --calamares-conf FILE
+#       write the installer's "Drivers" page describing this computer
+#
+# NVIDIA choices follow NVIDIA's own lists of supported GPUs (shipped in
+# /usr/share/tuxos/drivers, generated from the driver packages):
+#   current driver (open kernel module) > 580xx legacy driver > nouveau.
+# Set SYSFS to a fake /sys tree to test detection.
+set -uo pipefail
+
+SYSFS="${SYSFS:-/sys}"
+DATA="${TUXOS_DRIVERS_DATA:-/usr/share/tuxos/drivers}"
+
+root=/ mode=recommended action=install calamares_conf=""
+while (( $# )); do
+    case "$1" in
+        --root) root="$2"; shift ;;
+        --mode) mode="$2"; shift ;;
+        --opensource) mode=opensource ;;
+        --list) action=list ;;
+        --dry-run) action=dry-run ;;
+        --calamares-conf) action=calamares; calamares_conf="$2"; shift ;;
+        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "tuxos-drivers: unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+case "${mode}" in
+    recommended|opensource) ;;
+    *) echo "tuxos-drivers: unknown mode '${mode}'" >&2; exit 2 ;;
+esac
+
+#{{{ detection
+
+has_id() { # file id
+    grep -qix "$2" "$1" 2>/dev/null
+}
+
+pci_read() { # device-dir file
+    local value
+    value=$(cat "$1/$2" 2>/dev/null) || return 1
+    value=${value#0x}
+    printf '%s' "${value,,}"
+}
+
+gpu_vendors=() nvidia_ids=() broadcom_wl=0
+detect_pci() {
+    local dev class vendor device
+    for dev in "${SYSFS}"/bus/pci/devices/*; do
+        [[ -e "${dev}/class" ]] || continue
+        class=$(pci_read "${dev}" class) || continue
+        vendor=$(pci_read "${dev}" vendor) || continue
+        device=$(pci_read "${dev}" device) || continue
+        case "${class}" in
+            03*)    # display controller
+                gpu_vendors+=("${vendor}")
+                [[ "${vendor}" == 10de ]] && nvidia_ids+=("${device}")
+                ;;
+            0280*)  # network controller (wireless)
+                # Broadcom chips that only Broadcom's wl driver runs well:
+                # BCM4360, BCM4352 and BCM4331
+                if [[ "${vendor}" == 14e4 ]] && [[ " 43a0 43b1 4331 " == *" ${device} "* ]]; then
+                    broadcom_wl=1
+                fi
+                ;;
+        esac
+    done
+}
+
+# names of the virtio channels the virtual machine provides
+has_virtio_port() {
+    grep -qx "$1" "${SYSFS}"/class/virtio-ports/*/name 2>/dev/null
+}
+
+virt=""
+detect_virt() {
+    local vendor product
+    vendor=$(cat "${SYSFS}/class/dmi/id/sys_vendor" 2>/dev/null || true)
+    product=$(cat "${SYSFS}/class/dmi/id/product_name" 2>/dev/null || true)
+    case "${vendor} ${product}" in
+        *QEMU*|*KVM*|*"Red Hat"*) virt=qemu ;;
+        *innotek*|*VirtualBox*|*Oracle*) virt=virtualbox ;;
+        *VMware*) virt=vmware ;;
+    esac
+}
+
+has_vendor() {
+    local v
+    for v in "${gpu_vendors[@]}"; do [[ "$v" == "$1" ]] && return 0; done
+    return 1
+}
+
+#}}}
+
+#{{{ plan
+
+packages=() services=() summary=() nvidia_driver=""
+plan() {
+    local id branch=current
+    if (( ${#nvidia_ids[@]} )); then
+        # the oldest card in the machine decides the branch
+        for id in "${nvidia_ids[@]}"; do
+            if has_id "${DATA}/nvidia-current.ids" "${id}"; then
+                :
+            elif has_id "${DATA}/nvidia-580xx.ids" "${id}"; then
+                [[ "${branch}" == current ]] && branch=580xx
+            else
+                branch=none
+            fi
+        done
+        if [[ "${mode}" == opensource || "${branch}" == none ]]; then
+            nvidia_driver=nouveau
+            packages+=(vulkan-nouveau lib32-vulkan-nouveau)
+            if [[ "${branch}" == none ]]; then
+                summary+=("NVIDIA graphics: open-source nouveau driver (NVIDIA's own driver no longer supports this card)")
+            else
+                summary+=("NVIDIA graphics: open-source nouveau driver")
+            fi
+        elif [[ "${branch}" == current ]]; then
+            nvidia_driver=nvidia-open
+            packages+=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils nvidia-settings)
+            summary+=("NVIDIA graphics: official NVIDIA driver with the open kernel module")
+        else
+            nvidia_driver=nvidia-580xx
+            packages+=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils nvidia-580xx-settings)
+            summary+=("NVIDIA graphics: official NVIDIA 580 driver (the series for this card)")
+        fi
+        # laptops with a second, built-in GPU: run apps on the NVIDIA card
+        # with "prime-run"
+        if [[ "${nvidia_driver}" == nvidia-* ]] && { has_vendor 8086 || has_vendor 1002; }; then
+            packages+=(nvidia-prime)
+            summary+=("Hybrid graphics: prime-run to start apps on the NVIDIA card")
+        fi
+    fi
+    if has_vendor 1002; then
+        packages+=(vulkan-radeon lib32-vulkan-radeon)
+        summary+=("AMD graphics: Mesa with Vulkan (RADV)")
+    fi
+    if has_vendor 8086; then
+        packages+=(vulkan-intel lib32-vulkan-intel intel-media-driver libva-intel-driver)
+        summary+=("Intel graphics: Mesa with Vulkan and video acceleration")
+    fi
+    if (( ${#gpu_vendors[@]} )); then
+        packages+=(lib32-mesa)
+    fi
+    if (( broadcom_wl )) && [[ "${mode}" == recommended ]]; then
+        packages+=(broadcom-wl-dkms)
+        summary+=("Broadcom Wi-Fi: Broadcom's wl driver")
+    fi
+    case "${virt}" in
+        qemu)
+            # each tool only works when the VM has its channel (virt-manager
+            # and GNOME Boxes add them); without one the service would fail
+            if has_virtio_port org.qemu.guest_agent.0; then
+                packages+=(qemu-guest-agent qemu-guest-agent-dinit)
+                services+=(qemu-ga)
+                summary+=("Virtual machine (QEMU/KVM): guest agent")
+            fi
+            if has_virtio_port com.redhat.spice.0; then
+                packages+=(spice-vdagent spice-vdagent-dinit)
+                services+=(spice-vdagentd)
+                summary+=("Virtual machine (QEMU/KVM): SPICE tools (clipboard, screen size)")
+            fi
+            ;;
+        virtualbox)
+            packages+=(virtualbox-guest-utils)
+            services+=(vboxservice)
+            summary+=("Virtual machine (VirtualBox): guest additions")
+            ;;
+        vmware)
+            packages+=(open-vm-tools)
+            services+=(vmtoolsd)
+            summary+=("Virtual machine (VMware): open-vm-tools")
+            ;;
+    esac
+    # drivers built with DKMS need the kernel headers (not installed by default)
+    if [[ " ${packages[*]} " == *-dkms\ * ]]; then
+        packages+=(linux-cachyos-headers)
+    fi
+    (( ${#summary[@]} )) || summary+=("No extra drivers needed: the drivers built into TuxOS cover this computer")
+}
+
+#}}}
+
+#{{{ install
+
+log() { printf 'tuxos-drivers: %s\n' "$*"; }
+
+in_root() {
+    if [[ "${root}" == / ]]; then "$@"; else chroot "${root}" "$@"; fi
+}
+
+online() {
+    # any package mirror answering means pacman can download
+    curl -sfI --max-time 10 https://mirrors.rit.edu/artixlinux/ >/dev/null 2>&1 \
+        || curl -sfI --max-time 10 https://geo.mirror.pkgbuild.com/ >/dev/null 2>&1 \
+        || curl -sfI --max-time 10 https://mirror.cachyos.org/ >/dev/null 2>&1
+}
+
+# after installing into the new system: stop the gpg-agent pacman may have
+# started there (it would keep the new system busy when the installer
+# unmounts it) and give the system its own DNS file back
+finish_root() {
+    chroot "${root}" gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1 || true
+    restore_resolv
+}
+
+restore_resolv() {
+    rm -f "${root}/etc/resolv.conf"
+    if [[ -e "${root}/etc/resolv.conf.tuxos-drivers" || -L "${root}/etc/resolv.conf.tuxos-drivers" ]]; then
+        mv "${root}/etc/resolv.conf.tuxos-drivers" "${root}/etc/resolv.conf"
+    fi
+}
+
+install_drivers() {
+    if (( ${#packages[@]} == 0 )); then
+        log "nothing to install"
+        return 0
+    fi
+    if [[ "${root}" == / && ${EUID} -ne 0 ]]; then
+        log "run as root: sudo tuxos-drivers"
+        return 1
+    fi
+    if ! online; then
+        log "no internet connection: the open-source drivers stay in use."
+        log "Connect to the internet and run 'sudo tuxos-drivers' to install: ${packages[*]}"
+        return 0
+    fi
+
+    if [[ "${root}" != / ]]; then
+        # the new system has no DNS setup of its own yet: lend it the live
+        # system's while pacman downloads, then put its own file back
+        if [[ -e "${root}/etc/resolv.conf" || -L "${root}/etc/resolv.conf" ]]; then
+            mv "${root}/etc/resolv.conf" "${root}/etc/resolv.conf.tuxos-drivers"
+        fi
+        cp -L /etc/resolv.conf "${root}/etc/resolv.conf"
+        trap 'finish_root' EXIT
+    fi
+
+    log "installing: ${packages[*]}"
+    # full upgrade together with the drivers: never a partial upgrade
+    if ! in_root pacman -Syu --noconfirm --needed "${packages[@]}"; then
+        log "installing the drivers failed; the open-source drivers stay in use."
+        log "Run 'sudo tuxos-drivers' again later."
+        return 1
+    fi
+
+    if [[ "${nvidia_driver}" == nvidia-* ]]; then
+        # load the NVIDIA driver early, so the login screen uses it from
+        # the start
+        mkdir -p "${root}/etc/mkinitcpio.conf.d"
+        cat > "${root}/etc/mkinitcpio.conf.d/10-tuxos-nvidia.conf" <<'EOF'
+# Written by tuxos-drivers: load the NVIDIA driver early (login screen)
+MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
+EOF
+        [[ "${root}" == / ]] && mkinitcpio -P
+    fi
+
+    local service
+    for service in "${services[@]}"; do
+        if [[ ! -e "${root}/etc/dinit.d/${service}" && -f "${DATA}/dinit/${service}" ]]; then
+            install -Dm644 "${DATA}/dinit/${service}" "${root}/etc/dinit.d/${service}"
+        fi
+        if [[ -e "${root}/etc/dinit.d/${service}" ]]; then
+            ln -sf "/etc/dinit.d/${service}" "${root}/etc/dinit.d/boot.d/${service}"
+            [[ "${root}" == / ]] && dinitctl start "${service}" >/dev/null 2>&1
+        fi
+    done
+    log "done. Restart the computer to use the new drivers."
+}
+
+#}}}
+
+#{{{ installer page
+
+write_calamares_conf() {
+    local line text=""
+    for line in "${summary[@]}"; do
+        text+="• ${line}<br/>"
+    done
+    mkdir -p "$(dirname "${calamares_conf}")"
+    cat > "${calamares_conf}" <<EOF
+---
+# Written at boot by tuxos-drivers --calamares-conf for this computer.
+mode: required
+method: legacy
+labels:
+    step: "Drivers"
+default: recommended
+items:
+    - id: recommended
+      name: "Recommended drivers"
+      description: "Detected on this computer:<br/>${text//\"/\\\"}<br/>The official drivers are downloaded during the installation, so the computer needs an internet connection. Without one, TuxOS uses its open-source drivers and you can run <code>sudo tuxos-drivers</code> later."
+      screenshot: "desktop-drivers-recommended.png"
+    - id: opensource
+      name: "Open-source drivers only"
+      description: "Use only open-source drivers (Mesa, nouveau). They are already part of TuxOS. Pick this if you prefer free software or have trouble with NVIDIA's driver."
+      screenshot: "desktop-drivers-opensource.png"
+EOF
+}
+
+#}}}
+
+detect_pci
+detect_virt
+plan
+
+case "${action}" in
+    list)
+        printf 'Detected hardware and drivers (%s):\n' "${mode}"
+        printf '  - %s\n' "${summary[@]}"
+        printf 'Packages: %s\n' "${packages[*]:-none}"
+        printf 'Services: %s\n' "${services[*]:-none}"
+        ;;
+    dry-run)
+        printf 'Would install: %s\n' "${packages[*]:-nothing}"
+        printf 'Would enable: %s\n' "${services[*]:-nothing}"
+        if [[ "${nvidia_driver}" == nvidia-* ]]; then
+            printf 'Would load %s early (mkinitcpio)\n' "${nvidia_driver}"
+        fi
+        ;;
+    calamares) write_calamares_conf ;;
+    install) install_drivers ;;
+esac

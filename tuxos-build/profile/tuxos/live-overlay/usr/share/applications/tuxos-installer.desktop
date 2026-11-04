@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install TuxOS
+Comment=Install TuxOS on this computer
+Icon=/usr/share/pixmaps/tuxos-logo.png
+Exec=/usr/lib/tuxos/run-installer
+Terminal=false
+Categories=System;

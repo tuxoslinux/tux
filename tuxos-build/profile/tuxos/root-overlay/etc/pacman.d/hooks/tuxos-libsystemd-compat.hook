@@ -1,0 +1,16 @@
+# Arch packages linked against systemd's libsystemd.so.0 (Budgie's session
+# starter, python-systemd, ananicy-cpp) need that library; TuxOS uses
+# elogind instead, whose libelogind.so.0 has the same functions and symbol
+# versions.
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = budgie-session
+Target = python-systemd
+Target = ananicy-cpp
+
+[Action]
+Description = Pointing libsystemd.so.0 at elogind's library...
+When = PostTransaction
+Exec = /usr/lib/tuxos/libsystemd-compat

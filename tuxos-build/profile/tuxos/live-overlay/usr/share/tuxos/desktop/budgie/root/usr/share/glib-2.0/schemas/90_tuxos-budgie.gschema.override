@@ -1,0 +1,15 @@
+# TuxOS defaults for Budgie (applied on top of 30_org.archlinux.budgie-desktop):
+# dark Adwaita and Papirus-Dark instead of Arch's Materia, to match TuxOS
+
+[org.gnome.desktop.background:Budgie]
+picture-uri='file:///usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg'
+picture-uri-dark='file:///usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg'
+picture-options='zoom'
+
+[org.gnome.desktop.screensaver:Budgie]
+picture-uri='file:///usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg'
+
+[org.gnome.desktop.interface:Budgie]
+color-scheme='prefer-dark'
+gtk-theme='Adwaita-dark'
+icon-theme='Papirus-Dark'

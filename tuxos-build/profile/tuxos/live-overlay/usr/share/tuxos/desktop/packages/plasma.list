@@ -1,0 +1,21 @@
+# KDE Plasma
+plasma-desktop
+plasma-workspace
+plasma-nm
+plasma-pa
+powerdevil
+bluedevil
+kscreen
+kde-gtk-config
+breeze-gtk
+sddm-kcm
+kinfocenter
+systemsettings
+xdg-desktop-portal-kde
+konsole
+dolphin
+kate
+okular
+gwenview
+ark
+spectacle

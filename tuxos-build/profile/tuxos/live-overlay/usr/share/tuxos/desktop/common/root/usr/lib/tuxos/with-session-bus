@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs a program once the user's D-Bus session bus is up.
+#
+# Without systemd the session bus is started by the user's dinit instance
+# (userspawn) when the user logs in, which can be a moment after the
+# compositor runs its autostart. Programs like waybar exit if the bus is
+# missing, so wait for it (up to 15 seconds) first.
+bus="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus"
+i=0
+while [ ! -S "$bus" ] && [ "$i" -lt 75 ]; do
+    sleep 0.2
+    i=$((i + 1))
+done
+[ -S "$bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+exec "$@"

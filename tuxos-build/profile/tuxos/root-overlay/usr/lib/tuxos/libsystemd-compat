@@ -1,0 +1,7 @@
+#!/bin/sh
+# Run by the pacman hook tuxos-libsystemd-compat: TuxOS has no systemd, so
+# libsystemd.so.0 (needed by some Arch packages) is elogind's library, which
+# keeps libsystemd's functions and symbol versions.
+if [ ! -e /usr/lib/libsystemd.so.0 ] && [ -e /usr/lib/libelogind.so.0 ]; then
+    ln -s libelogind.so.0 /usr/lib/libsystemd.so.0
+fi

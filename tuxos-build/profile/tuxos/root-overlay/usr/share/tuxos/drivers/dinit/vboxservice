@@ -1,0 +1,4 @@
+# VirtualBox guest additions service (installed by tuxos-drivers)
+type       = process
+command    = /usr/bin/VBoxService -f
+depends-on = local.target

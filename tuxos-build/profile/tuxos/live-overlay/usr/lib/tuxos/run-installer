@@ -1,0 +1,8 @@
+#!/bin/sh
+# "Install TuxOS" in the live session: describe this computer's hardware on
+# the installer's "Drivers" page, then start the installer as root (the live
+# user may use sudo without a password).
+exec sudo --preserve-env=DISPLAY,XAUTHORITY,LANG,LC_ALL /bin/sh -c '
+    tuxos-drivers --calamares-conf /etc/calamares/modules/packagechooser_drivers.conf
+    export QT_QPA_PLATFORMTHEME=kde
+    exec calamares'

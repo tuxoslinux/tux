@@ -1,0 +1,23 @@
+# i3 (X11, tiling)
+i3-wm
+i3status
+i3lock
+dmenu
+alacritty
+feh
+dunst
+polkit-gnome
+thunar
+thunar-archive-plugin
+mousepad
+ristretto
+atril
+xarchiver
+pavucontrol
+network-manager-applet
+blueman
+adwaita-icon-theme
+libnotify
+scrot
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

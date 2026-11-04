@@ -1,0 +1,18 @@
+# Installed with every desktop: login screen, audio, browser, fonts
+sddm
+sddm-dinit
+pipewire
+pipewire-alsa
+pipewire-pulse
+wireplumber
+pipewire-dinit
+pipewire-pulse-dinit
+wireplumber-dinit
+dbus-dinit-user
+firefox
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu
+xdg-user-dirs
+xdg-utils
+gvfs

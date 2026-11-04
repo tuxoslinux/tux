@@ -1,0 +1,96 @@
+#!/bin/bash
+# zram swap for TuxOS (started by the dinit service tuxos-zram).
+#
+#   zram-setup start|stop|recompress
+#
+# Swap goes into compressed RAM first (priority 100, before any swap
+# partition). Pages are compressed with a fast algorithm (lz4: quick to
+# read back, so no stutter when memory is tight); `recompress`, run every
+# hour by cron, compresses pages nobody touched for an hour again with a
+# strong one (zstd), which makes room for more. Settings:
+# /etc/tuxos/performance.conf.
+set -u
+
+ZRAM=yes
+ZRAM_ALGORITHM=lz4
+ZRAM_RECOMPRESS_ALGORITHM=zstd
+ZRAM_SIZE_PERCENT=100
+# shellcheck source=/etc/tuxos/performance.conf
+[[ -r /etc/tuxos/performance.conf ]] && . /etc/tuxos/performance.conf
+
+dev=zram0
+sys=/sys/block/${dev}
+
+log() { printf 'zram-setup: %s\n' "$*"; }
+
+active() { grep -q "^/dev/${dev} " /proc/swaps; }
+
+# the first of the wanted algorithms the kernel offers
+pick_algorithm() { # wanted...
+    local available a
+    available="$(tr -d '[]' < "${sys}/comp_algorithm")"
+    for a in "$@"; do
+        if [[ " ${available} " == *" ${a} "* ]]; then
+            echo "${a}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+start() {
+    [[ "${ZRAM}" == yes ]] || { log "off in /etc/tuxos/performance.conf"; return 0; }
+    active && return 0
+    modprobe zram num_devices=1 || return 1
+    [[ -e "${sys}/disksize" ]] || { log "no zram device"; return 1; }
+
+    local algo mem_kb size_kb
+    algo="$(pick_algorithm "${ZRAM_ALGORITHM}" lz4 zstd lzo-rle)" || algo=""
+    [[ -n "${algo}" ]] && echo "${algo}" > "${sys}/comp_algorithm"
+    # second algorithm for idle pages (kernels with multi-compression)
+    if [[ -n "${ZRAM_RECOMPRESS_ALGORITHM}" && -w "${sys}/recomp_algorithm" \
+          && "${ZRAM_RECOMPRESS_ALGORITHM}" != "${algo}" ]]; then
+        echo "algo=${ZRAM_RECOMPRESS_ALGORITHM} priority=1" > "${sys}/recomp_algorithm" 2>/dev/null \
+            || log "no ${ZRAM_RECOMPRESS_ALGORITHM} recompression in this kernel"
+    fi
+    mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+    size_kb=$(( mem_kb * ZRAM_SIZE_PERCENT / 100 ))
+    echo "${size_kb}K" > "${sys}/disksize" || return 1
+    mkswap -L zram0 "/dev/${dev}" >/dev/null || return 1
+    swapon -p 100 "/dev/${dev}" || return 1
+
+    # zswap would compress pages before they reach zram: twice the work
+    [[ -w /sys/module/zswap/parameters/enabled ]] && echo N > /sys/module/zswap/parameters/enabled
+    # swapping to RAM is cheap: prefer it to dropping the page cache
+    sysctl -q vm.swappiness=150 vm.page-cluster=0
+    log "on: ${algo:-default} compression, up to $(( size_kb / 1024 )) MiB"
+}
+
+stop() {
+    active || return 0
+    swapoff "/dev/${dev}" && echo 1 > "${sys}/reset"
+    sysctl -q vm.swappiness=100
+}
+
+# Compress pages that stayed idle since the last run with the strong
+# algorithm, then mark every page idle for the next run.
+recompress() {
+    active || return 0
+    [[ -w "${sys}/recompress" && -w "${sys}/idle" ]] || return 0
+    # never while a game runs (a burst of zstd work on one CPU); the pages
+    # stay marked idle and the next hourly run takes them
+    if [[ "$(cat /run/tuxos-gamed/mode 2>/dev/null)" == on ]]; then
+        log "game mode on: recompression waits for the next run"
+        return 0
+    fi
+    # fails harmlessly when no second algorithm is set up
+    echo "type=idle" > "${sys}/recompress" 2>/dev/null
+    echo all > "${sys}/idle"
+}
+
+case "${1:-}" in
+    start) start ;;
+    stop) stop ;;
+    recompress) recompress ;;
+    *) echo "usage: $0 start|stop|recompress" >&2; exit 1 ;;
+esac

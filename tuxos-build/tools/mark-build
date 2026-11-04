@@ -1,0 +1,27 @@
+#!/bin/bash
+# Records the test result of a build in out/BUILDS.md.
+#
+#   mark-build build4/tuxos-20261025-0215-x86_64.iso "passed: all QEMU tests"
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+builds="${here}/../../out/BUILDS.md"
+name="$1" result="$2"
+
+if ! grep -q "^| ${name} |" "${builds}"; then
+    echo "mark-build: ${name} is not listed in ${builds}" >&2
+    exit 1
+fi
+# replace the last column of that build's row
+python3 -I - "${builds}" "${name}" "${result}" <<'EOF'
+import sys
+path, name, result = sys.argv[1:]
+lines = open(path).read().split('\n')
+for i, line in enumerate(lines):
+    if line.startswith(f'| {name} |'):
+        cells = line.split(' | ')
+        cells[-1] = f'{result} |'
+        lines[i] = ' | '.join(cells)
+open(path, 'w').write('\n'.join(lines))
+EOF
+grep "^| ${name} |" "${builds}"

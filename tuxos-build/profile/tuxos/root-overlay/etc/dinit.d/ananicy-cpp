@@ -1,0 +1,8 @@
+# Ananicy-cpp: gives known programs (games, compilers, background jobs) the
+# right CPU and I/O priority (rules: /etc/ananicy.d). Started through
+# /usr/lib/tuxos/ananicy-start (tracefs, stale lock).
+type            = process
+command         = /usr/lib/tuxos/ananicy-start
+after           = local.target
+smooth-recovery = true
+logfile         = /var/log/dinit/ananicy-cpp.log

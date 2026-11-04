@@ -1,0 +1,5 @@
+# Environment of Budgie's labwc compositor. Budgie keeps the keyboard and
+# cursor variables up to date itself; the installer sets the keyboard
+# layout chosen during installation for the first login.
+XKB_DEFAULT_LAYOUT=us
+XKB_DEFAULT_VARIANT=

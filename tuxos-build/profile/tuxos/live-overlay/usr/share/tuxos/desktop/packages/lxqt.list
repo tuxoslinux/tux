@@ -1,0 +1,12 @@
+# LXQt (with Openbox as window manager)
+lxqt
+openbox
+breeze-icons
+featherpad
+lximage-qt
+qpdfview
+lxqt-archiver
+network-manager-applet
+blueman
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

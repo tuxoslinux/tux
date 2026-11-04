@@ -1,0 +1,9 @@
+# TuxOS session for labwc
+swaybg -m fill -i /usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg >/dev/null 2>&1 &
+/usr/lib/tuxos/with-session-bus waybar >/dev/null 2>&1 &
+/usr/lib/tuxos/with-session-bus mako >/dev/null 2>&1 &
+/usr/lib/tuxos/with-session-bus /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
+/usr/lib/tuxos/with-session-bus nm-applet --indicator >/dev/null 2>&1 &
+/usr/lib/tuxos/with-session-bus blueman-applet >/dev/null 2>&1 &
+xdg-user-dirs-update
+/usr/lib/tuxos/with-session-bus notify-send -t 15000 "Welcome to TuxOS" "Right-click the desktop for the menu\nSuper+Enter: terminal\nSuper+D: apps\nSuper+Q: close window" &

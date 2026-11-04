@@ -1,0 +1,41 @@
+#!/bin/bash
+# Lists every package on a TuxOS ISO with its exact version, for the source
+# list published with each release (see ../../SOURCES.md).
+#
+#   tools/list-packages ISO > packages.txt
+#
+# Covers the installed system (LiveOS/rootfs.img) and what only the live
+# session adds (LiveOS/livefs.img). Packages the installer downloads later
+# (desktop, drivers, gaming) come straight from the repositories. Needs
+# bsdtar and unsquashfs; no root.
+set -euo pipefail
+
+iso="${1:?usage: list-packages ISO}"
+[[ -f "${iso}" ]] || { echo "ERROR: ${iso} not found" >&2; exit 1; }
+
+# the images are large: unpack under $HOME, not in the small /tmp
+tmp="$(mktemp -d "${HOME}/.tuxos-list-packages.XXXXXX")"
+trap 'chmod -R u+w "${tmp}" 2>/dev/null; rm -rf "${tmp}"' EXIT
+
+# name version per package in a pacman database
+db_packages() {
+    for desc in "$1"/var/lib/pacman/local/*/desc; do
+        awk '/^%NAME%$/ { getline; n = $0 } /^%VERSION%$/ { getline; v = $0 }
+             END { print n, v }' "${desc}"
+    done | sort
+}
+
+echo "# Packages on $(basename "${iso}")"
+for img in rootfs livefs; do
+    bsdtar -xf "${iso}" -C "${tmp}" "LiveOS/${img}.img"
+    unsquashfs -q -d "${tmp}/${img}" "${tmp}/LiveOS/${img}.img" \
+        'var/lib/pacman/local/*/desc' >/dev/null 2>&1 || true
+    rm -f "${tmp}/LiveOS/${img}.img"
+done
+
+echo "## Installed system (rootfs)"
+db_packages "${tmp}/rootfs"
+if compgen -G "${tmp}/livefs/var/lib/pacman/local/*/desc" >/dev/null; then
+    echo "## Live session only (livefs)"
+    comm -13 <(db_packages "${tmp}/rootfs") <(db_packages "${tmp}/livefs")
+fi

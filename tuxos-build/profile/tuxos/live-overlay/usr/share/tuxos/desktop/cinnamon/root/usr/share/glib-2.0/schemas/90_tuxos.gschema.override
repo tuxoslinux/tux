@@ -1,0 +1,9 @@
+# TuxOS defaults for Cinnamon (applied on top of 30_org.archlinux.cinnamon)
+
+[org.cinnamon]
+favorite-apps=[ 'firefox.desktop', 'org.gnome.Terminal.desktop', 'nemo.desktop', 'org.x.editor.desktop', 'cinnamon-settings.desktop' ]
+system-icon="/usr/share/pixmaps/tuxos-logo.png"
+
+[org.cinnamon.desktop.background]
+picture-uri='file:///usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg'
+picture-options='zoom'

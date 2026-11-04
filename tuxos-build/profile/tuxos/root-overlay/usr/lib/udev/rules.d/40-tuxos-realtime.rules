@@ -1,0 +1,7 @@
+# TuxOS: audio programs (group audio) may use the precise timers and ask
+# the CPU to stay out of deep sleep states
+KERNEL=="rtc0", GROUP="audio"
+KERNEL=="hpet", GROUP="audio"
+DEVPATH=="/devices/virtual/misc/cpu_dma_latency", OWNER="root", GROUP="audio", MODE="0660"
+# Wine/Proton's NT synchronization driver: for every program
+KERNEL=="ntsync", MODE="0666"

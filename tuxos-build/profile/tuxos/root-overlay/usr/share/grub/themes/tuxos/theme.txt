@@ -1,0 +1,52 @@
+# TuxOS GRUB theme "Terminal": monospace menu with a reverse-video
+# selection and the ASCII Tux (the fastfetch logo) on the right.
+# Background and pixmaps come from branding/make-designs.py, the Noto Sans
+# Mono fonts from branding/make-assets.sh.
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#000000"
+message-font: "Noto Sans Mono Regular 16"
+message-color: "#cdcdcd"
+message-bg-color: "#000000"
+terminal-font: "Noto Sans Mono Regular 16"
+
++ boot_menu {
+    left = 48
+    top = 104
+    width = 52%
+    height = 70%
+    item_font = "Noto Sans Mono Regular 16"
+    item_color = "#cdcdcd"
+    selected_item_font = "Noto Sans Mono Bold 16"
+    selected_item_color = "#000000"
+    selected_item_pixmap_style = "highlight_*.png"
+    icon_height = 0
+    icon_width = 0
+    item_icon_space = 0
+    item_height = 28
+    item_padding = 8
+    item_spacing = 2
+    scrollbar = true
+    scrollbar_width = 32
+    scrollbar_thumb = "slider_*.png"
+    menu_pixmap_style = "menu_*.png"
+}
+
++ label {
+    id = "__timeout__"
+    left = 48
+    top = 86%
+    width = 60%
+    color = "#f5b800"
+    font = "Noto Sans Mono Regular 16"
+    text = "-- auto boot in %d s --"
+}
+
++ label {
+    left = 48
+    top = 92%
+    width = 90%
+    color = "#6f6f6f"
+    font = "Noto Sans Mono Regular 16"
+    text = "[enter] boot   [e] edit   [c] command line"
+}

@@ -1,0 +1,187 @@
+#!/bin/bash
+# Run by the installer (Calamares shellprocess@desktop) on the live system:
+# sets up pacman's keyring in the new system, switches it to the packages
+# optimized for this CPU (tuxos-tune setup) and installs the desktop chosen
+# on the "Desktop" page, downloaded from the TuxOS package repositories (the
+# installer requires an internet connection).
+#
+#   install-desktop TARGET_ROOT DESKTOP_ID USERNAME
+#
+# DESKTOP_ID is the id of the chosen item in packagechooser_desktop.conf;
+# "console" (or empty) installs no desktop.
+set -euo pipefail
+
+root="$1" desktop="${2:-console}" user="${3:-}"
+data=/usr/share/tuxos/desktop
+
+log() { printf 'install-desktop: %s\n' "$*"; }
+in_target() { chroot "${root}" "$@"; }
+
+restore_resolv() {
+    rm -f "${root}/etc/resolv.conf"
+    if [[ -e "${root}/etc/resolv.conf.tuxos-desktop" || -L "${root}/etc/resolv.conf.tuxos-desktop" ]]; then
+        mv "${root}/etc/resolv.conf.tuxos-desktop" "${root}/etc/resolv.conf"
+    fi
+}
+
+cleanup() {
+    # gpg-agent started by pacman-key would keep the new system busy
+    in_target gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1 || true
+    if [[ "${resolv_lent:-0}" == 1 ]]; then
+        restore_resolv
+    fi
+}
+trap cleanup EXIT
+
+# Every install, with or without a desktop: a working keyring, so pacman
+# can install and update packages on the new system
+log "setting up the pacman keyring"
+in_target pacman-key --init
+in_target pacman-key --populate artix archlinux cachyos
+
+# The new system has no DNS setup of its own yet: lend it the live
+# system's while pacman downloads, then put its own file back
+if [[ -e "${root}/etc/resolv.conf" || -L "${root}/etc/resolv.conf" ]]; then
+    mv "${root}/etc/resolv.conf" "${root}/etc/resolv.conf.tuxos-desktop"
+fi
+cp -L /etc/resolv.conf "${root}/etc/resolv.conf"
+resolv_lent=1
+
+# Every install: packages built for this CPU (kernel and the rest that
+# CachyOS optimizes) and services for the hardware present
+log "setting up the packages optimized for this CPU"
+tuxos-tune setup --root "${root}" || log "warning: CPU-optimized packages not set up"
+
+if [[ -z "${desktop}" || "${desktop}" == console ]]; then
+    log "no desktop selected"
+    exit 0
+fi
+if [[ ! -f "${data}/packages/${desktop}.list" ]]; then
+    log "unknown desktop '${desktop}'"
+    exit 1
+fi
+
+mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' \
+    "${data}/packages/common.list" "${data}/packages/${desktop}.list")
+
+# Download from the TuxOS repositories in the new system's pacman.conf.
+# Together with a full upgrade, so the new system is never partly upgraded;
+# a dropped connection gets two more tries.
+log "installing ${desktop} (${#pkgs[@]} packages, downloaded from the internet)"
+for try in 1 2 3; do
+    if in_target pacman -Syu --noconfirm --needed "${pkgs[@]}"; then
+        break
+    fi
+    if (( try == 3 )); then
+        log "downloading ${desktop} failed; check the internet connection"
+        exit 1
+    fi
+    log "download failed, trying again (${try}/3)"
+    sleep 10
+done
+
+log "configuring ${desktop}"
+cp -a "${data}/common/root/." "${root}/"
+[[ -d "${data}/${desktop}/root" ]] && cp -a "${data}/${desktop}/root/." "${root}/"
+[[ -d "${data}/${desktop}/skel" ]] && cp -a "${data}/${desktop}/skel/." "${root}/etc/skel/"
+
+# Graphical login
+in_target ln -sf /etc/dinit.d/sddm /etc/dinit.d/boot.d/sddm
+
+# Sound for the user: started by the user's dinit instance at login. The
+# links go into /etc/skel, which the users step copies into the new home
+# (owned by the user, which userspawn needs).
+for service in pipewire pipewire-pulse wireplumber; do
+    ln -sf "/etc/dinit.d/user/${service}" "${root}/etc/skel/.config/dinit.d/boot.d/${service}"
+done
+
+# Keyboard layout chosen in the installer, for the Wayland compositors
+xkb_value() { # option-name
+    sed -n "s/.*Option \"$1\" \"\(.*\)\".*/\1/p" "${root}/etc/X11/xorg.conf.d/00-keyboard.conf" 2>/dev/null | head -n1
+}
+layout="$(xkb_value XkbLayout)" variant="$(xkb_value XkbVariant)"
+layout="${layout:-us}"
+
+session=""
+case "${desktop}" in
+    plasma)
+        session=/usr/share/wayland-sessions/plasma.desktop
+        for f in "${root}"/usr/share/plasma/look-and-feel/org.kde.breeze*.desktop/contents/defaults; do
+            [[ -f "$f" ]] && sed -i 's/^Image=.*/Image=TuxOS/' "$f"
+        done
+        ;;
+    hyprland)
+        session=/usr/share/wayland-sessions/hyprland.desktop
+        sed -i -e "s/^    kb_layout = .*/    kb_layout = ${layout}/" \
+               -e "s/^    kb_variant = .*/    kb_variant = ${variant}/" \
+            "${root}/etc/skel/.config/hypr/hyprland.conf"
+        ;;
+    cinnamon)
+        session=/usr/share/xsessions/cinnamon.desktop
+        in_target glib-compile-schemas /usr/share/glib-2.0/schemas
+        ;;
+    budgie)
+        session=/usr/share/wayland-sessions/budgie-desktop.desktop
+        skel_labwc="${root}/etc/skel/.config/budgie-desktop/labwc"
+        # Budgie's labwc settings for new users: Budgie's own template plus
+        # an errorCommand that shows nothing. Budgie's settings bridge
+        # writes placeholder shortcuts (key="undefined") that labwc 0.20
+        # reports in a red "Config errors detected" bar at every login;
+        # labwc skips them either way.
+        mkdir -p "${skel_labwc}"
+        sed 's|^<labwc_config version="\([0-9]*\)">$|&\n\t<core>\n\t\t<errorCommand>true</errorCommand>\n\t</core>|' \
+            "${root}/usr/share/budgie-desktop/labwc/rc.xml" > "${skel_labwc}/rc.xml"
+        grep -q '<errorCommand>true</errorCommand>' "${skel_labwc}/rc.xml" \
+            || log "warning: could not add errorCommand to Budgie's labwc settings"
+        sed -i -e "s/^XKB_DEFAULT_LAYOUT=.*/XKB_DEFAULT_LAYOUT=${layout}/" \
+               -e "s/^XKB_DEFAULT_VARIANT=.*/XKB_DEFAULT_VARIANT=${variant}/" \
+            "${skel_labwc}/environment"
+        # Budgie's bridge takes the keyboard layout from GSettings first:
+        # the layouts chosen in the installer ("us,bg" with variants ",")
+        IFS=, read -r -a layouts <<< "${layout}"
+        IFS=, read -r -a variants <<< "${variant}"
+        sources=""
+        for i in "${!layouts[@]}"; do
+            src="${layouts[$i]}"
+            [[ -n "${variants[$i]:-}" ]] && src+="+${variants[$i]}"
+            sources+="${sources:+, }('xkb', '${src}')"
+        done
+        printf '# Keyboard layout chosen in the TuxOS installer\n[org.gnome.desktop.input-sources:Budgie]\nsources=[%s]\n' \
+            "${sources}" > "${root}/usr/share/glib-2.0/schemas/91_tuxos-budgie-keyboard.gschema.override"
+        in_target glib-compile-schemas /usr/share/glib-2.0/schemas
+        ;;
+    lxqt)
+        session=/usr/share/xsessions/lxqt.desktop
+        install -Dm644 "${root}/usr/share/pcmanfm-qt/lxqt/settings.conf" \
+            "${root}/etc/skel/.config/pcmanfm-qt/lxqt/settings.conf"
+        sed -i -e 's|^Wallpaper=.*|Wallpaper=/usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg|' \
+               -e 's|^WallpaperMode=.*|WallpaperMode=zoom|' \
+            "${root}/etc/skel/.config/pcmanfm-qt/lxqt/settings.conf"
+        ;;
+    labwc)
+        session=/usr/share/wayland-sessions/labwc.desktop
+        sed -i -e "s/^XKB_DEFAULT_LAYOUT=.*/XKB_DEFAULT_LAYOUT=${layout}/" \
+               -e "s/^XKB_DEFAULT_VARIANT=.*/XKB_DEFAULT_VARIANT=${variant}/" \
+            "${root}/etc/xdg/labwc/environment"
+        ;;
+    xfce)
+        session=/usr/share/xsessions/xfce.desktop
+        ;;
+    i3)
+        session=/usr/share/xsessions/i3.desktop
+        # debugging session that would only confuse the login screen
+        rm -f "${root}/usr/share/xsessions/i3-with-shmlog.desktop"
+        sed -i 's|^\(NoExtract *=.*\)$|\1 usr/share/xsessions/i3-with-shmlog.desktop|' "${root}/etc/pacman.conf"
+        ;;
+esac
+
+# Preselect the user and the desktop on the login screen
+if [[ -n "${session}" && -f "${root}${session}" ]]; then
+    mkdir -p "${root}/var/lib/sddm"
+    printf '[Last]\nSession=%s\nUser=%s\n' "${session}" "${user}" > "${root}/var/lib/sddm/state.conf"
+    in_target chown -R sddm:sddm /var/lib/sddm
+else
+    log "warning: session file ${session} not found"
+fi
+
+log "done"

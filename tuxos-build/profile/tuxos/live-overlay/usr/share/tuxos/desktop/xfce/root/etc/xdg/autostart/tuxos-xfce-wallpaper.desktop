@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=TuxOS wallpaper
+Comment=Sets the TuxOS wallpaper on the first XFCE login
+Exec=/usr/lib/tuxos/xfce-wallpaper
+OnlyShowIn=XFCE;
+NoDisplay=true

@@ -1,0 +1,7 @@
+/* TuxOS installer styling (Qt stylesheet). Colours of the sidebar are set
+ * in branding.desc; this only accents the primary navigation buttons. */
+
+#view-button-next:enabled,
+#view-button-install:enabled {
+    font-weight: bold;
+}

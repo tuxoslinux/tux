@@ -1,0 +1,28 @@
+#!/bin/sh
+# First XFCE login: show the TuxOS wallpaper on every monitor and workspace.
+# XFCE has no system-wide default for this, so it is set per user, once.
+
+done_flag="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/xfce-wallpaper-done"
+[ -e "$done_flag" ] && exit 0
+
+wallpaper=/usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg
+
+# xfdesktop writes its settings shortly after the session starts
+i=0
+while [ "$i" -lt 30 ] && ! xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -q '/last-image$'; do
+    sleep 0.5
+    i=$((i + 1))
+done
+
+for monitor in $(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }'); do
+    for workspace in 0 1 2 3; do
+        base="/backdrop/screen0/monitor${monitor}/workspace${workspace}"
+        xfconf-query -c xfce4-desktop -p "${base}/last-image" --create -t string -s "$wallpaper"
+        xfconf-query -c xfce4-desktop -p "${base}/image-style" --create -t int -s 5
+    done
+done
+for property in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$'); do
+    xfconf-query -c xfce4-desktop -p "$property" -s "$wallpaper"
+done
+
+mkdir -p "$(dirname "$done_flag")" && touch "$done_flag"

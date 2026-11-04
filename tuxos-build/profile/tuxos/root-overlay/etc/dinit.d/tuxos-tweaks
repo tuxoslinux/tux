@@ -1,0 +1,6 @@
+# One-time TuxOS tweaks at boot (see /usr/lib/tuxos/boot-tweaks)
+type    = scripted
+command = /usr/lib/tuxos/boot-tweaks
+restart = false
+after   = udev-settle
+before  = local.target

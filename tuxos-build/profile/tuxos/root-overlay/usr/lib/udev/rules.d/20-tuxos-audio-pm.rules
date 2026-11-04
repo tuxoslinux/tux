@@ -1,0 +1,10 @@
+# TuxOS: no sound card power saving while on mains power (it causes pops
+# and crackles); on battery the old value comes back.
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="card*", DRIVERS=="snd_hda_intel", \
+    TEST!="/run/udev/tuxos-hda-powersave", RUN+="/usr/lib/tuxos/audio-pm init"
+ACTION=="add|change", SUBSYSTEM=="power_supply", ENV{POWER_SUPPLY_TYPE}=="Mains", \
+    ENV{POWER_SUPPLY_ONLINE}=="0", TEST=="/sys/module/snd_hda_intel", \
+    RUN+="/usr/lib/tuxos/audio-pm battery"
+ACTION=="add|change", SUBSYSTEM=="power_supply", ENV{POWER_SUPPLY_TYPE}=="Mains", \
+    ENV{POWER_SUPPLY_ONLINE}=="1", TEST=="/sys/module/snd_hda_intel", \
+    RUN+="/usr/lib/tuxos/audio-pm ac"

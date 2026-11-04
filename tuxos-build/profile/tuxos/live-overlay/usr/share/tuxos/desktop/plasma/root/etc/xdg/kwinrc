@@ -1,0 +1,4 @@
+# TuxOS: full-screen games may tear instead of waiting for the next screen
+# refresh (lowest input latency; games with VSync on are not affected)
+[Compositing]
+AllowTearing=true

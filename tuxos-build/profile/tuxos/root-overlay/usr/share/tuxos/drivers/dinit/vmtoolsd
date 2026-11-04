@@ -1,0 +1,4 @@
+# VMware guest tools service (installed by tuxos-drivers)
+type       = process
+command    = /usr/bin/vmtoolsd
+depends-on = local.target

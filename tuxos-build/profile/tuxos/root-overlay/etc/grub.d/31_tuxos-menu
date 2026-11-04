@@ -1,0 +1,80 @@
+#!/bin/sh
+# TuxOS: when to show the boot menu (part of grub-mkconfig).
+#
+# /etc/default/grub hides the menu (GRUB_TIMEOUT_STYLE="hidden",
+# GRUB_TIMEOUT="0"), so TuxOS starts without waiting. With a timeout of 0
+# GRUB reads no keys at all, and many UEFI firmwares cannot report a held
+# Shift, so the menu also shows by itself when it may be needed:
+#   - another operating system installed (dual boot): for 5 seconds;
+#   - the last start did not get as far as the login screen (crash, power
+#     cut, broken update): for 10 seconds. GRUB notes each start in its
+#     environment block (tuxos_booting=1); the dinit service tuxos-bootok
+#     clears it once the system is up;
+#   - asked for with `sudo tuxos-tune bootmenu`: once, waiting for a choice;
+#   - Shift held while the computer starts (BIOS and the UEFI firmwares
+#     that report it): waiting for a choice.
+# GRUB can only write its environment block on plain file systems; on
+# btrfs, LVM, RAID or encrypted /boot it waits 1 s instead (hidden), and
+# Esc shows the menu.
+set -e
+
+[ "${GRUB_TIMEOUT_STYLE}" = hidden ] || exit 0
+
+if [ "${GRUB_DISABLE_OS_PROBER}" != true ] && command -v os-prober >/dev/null 2>&1 \
+   && [ -n "$(os-prober 2>/dev/null)" ]; then
+    cat <<'EOF'
+# TuxOS: another operating system is installed: show the menu
+set timeout_style=menu
+if [ "${timeout}" = 0 ]; then
+  set timeout=5
+fi
+EOF
+    exit 0
+fi
+
+# can GRUB write /boot/grub/grubenv here?
+grubdir=/boot/grub
+writable=yes
+case "$(grub-probe --target=fs "${grubdir}" 2>/dev/null)" in
+    ext2|fat|xfs) ;;
+    *) writable=no ;;
+esac
+case "$(grub-probe --target=abstraction "${grubdir}" 2>/dev/null)" in
+    *lvm*|*diskfilter*|*crypto*|*raid*) writable=no ;;
+esac
+if [ "${writable}" = yes ] && [ ! -s "${grubdir}/grubenv" ]; then
+    grub-editenv "${grubdir}/grubenv" create 2>/dev/null || writable=no
+fi
+
+if [ "${writable}" = no ]; then
+    cat <<'EOF'
+# TuxOS: boot menu hidden; Esc during the 1 s wait shows it
+if [ "${timeout}" = 0 ]; then
+  set timeout=1
+fi
+EOF
+    exit 0
+fi
+
+cat <<'EOF'
+# TuxOS: boot menu safety net (see /etc/grub.d/31_tuxos-menu)
+if [ "${timeout}" = 0 ]; then
+  if [ "${tuxos_menu}" = 1 ]; then
+    set timeout_style=menu
+    set timeout=-1
+    set tuxos_menu=
+    save_env tuxos_menu
+  elif [ "${tuxos_booting}" = 1 ]; then
+    set timeout_style=menu
+    set timeout=10
+  else
+    insmod keystatus
+    if keystatus --shift; then
+      set timeout_style=menu
+      set timeout=-1
+    fi
+  fi
+  set tuxos_booting=1
+  save_env tuxos_booting
+fi
+EOF

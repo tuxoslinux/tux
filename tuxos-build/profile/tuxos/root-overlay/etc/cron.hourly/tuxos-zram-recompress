@@ -1,0 +1,3 @@
+#!/bin/sh
+# zram: compress pages idle for an hour again with zstd (see zram-setup)
+exec /usr/lib/tuxos/zram-setup recompress

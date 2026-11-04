@@ -1,0 +1,122 @@
+# TuxOS i3 configuration (based on the i3 default config)
+# Full reference: https://i3wm.org/docs/userguide.html
+
+set $mod Mod4
+font pango:Noto Sans 10
+
+# Session
+exec --no-startup-id feh --no-fehbg --bg-fill /usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg
+exec --no-startup-id dunst
+exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec --no-startup-id nm-applet
+exec --no-startup-id blueman-applet
+exec --no-startup-id xdg-user-dirs-update
+exec --no-startup-id notify-send -t 15000 "Welcome to TuxOS" "Super+Enter: terminal\nSuper+D: apps\nSuper+E: files\nSuper+B: browser\nSuper+Shift+Q: close window\nSuper+Shift+E: log out"
+
+# TuxOS colours: class border background text indicator child_border
+client.focused          #f5b800 #f5b800 #000000 #ffc933 #f5b800
+client.focused_inactive #333333 #333333 #f4f6f8 #333333 #333333
+client.unfocused        #000000 #000000 #a3a3a3 #000000 #000000
+client.urgent           #ff6b6b #ff6b6b #000000 #ff6b6b #ff6b6b
+
+# Volume keys
+set $refresh_i3status killall -SIGUSR1 i3status
+bindsym XF86AudioRaiseVolume exec --no-startup-id wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+ && $refresh_i3status
+bindsym XF86AudioLowerVolume exec --no-startup-id wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && $refresh_i3status
+bindsym XF86AudioMute exec --no-startup-id wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && $refresh_i3status
+
+floating_modifier $mod
+tiling_drag modifier titlebar
+
+# Programs
+bindsym $mod+Return exec alacritty
+bindsym $mod+d exec --no-startup-id dmenu_run -nb '#000000' -nf '#f4f6f8' -sb '#f5b800' -sf '#000000'
+bindsym $mod+e exec thunar
+bindsym $mod+b exec firefox
+bindsym Print exec --no-startup-id sh -c 'mkdir -p "$HOME/Pictures" && scrot "$HOME/Pictures/screenshot-%Y%m%d-%H%M%S.png"'
+bindsym $mod+Shift+q kill
+
+# Focus and move
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+
+# Layout
+bindsym $mod+h split h
+bindsym $mod+v split v
+bindsym $mod+f fullscreen toggle
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+t layout toggle split
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
+bindsym $mod+a focus parent
+bindsym $mod+Shift+minus move scratchpad
+bindsym $mod+minus scratchpad show
+
+# Workspaces
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+set $ws5 "5"
+set $ws6 "6"
+set $ws7 "7"
+set $ws8 "8"
+set $ws9 "9"
+set $ws10 "10"
+bindsym $mod+1 workspace number $ws1
+bindsym $mod+2 workspace number $ws2
+bindsym $mod+3 workspace number $ws3
+bindsym $mod+4 workspace number $ws4
+bindsym $mod+5 workspace number $ws5
+bindsym $mod+6 workspace number $ws6
+bindsym $mod+7 workspace number $ws7
+bindsym $mod+8 workspace number $ws8
+bindsym $mod+9 workspace number $ws9
+bindsym $mod+0 workspace number $ws10
+bindsym $mod+Shift+1 move container to workspace number $ws1
+bindsym $mod+Shift+2 move container to workspace number $ws2
+bindsym $mod+Shift+3 move container to workspace number $ws3
+bindsym $mod+Shift+4 move container to workspace number $ws4
+bindsym $mod+Shift+5 move container to workspace number $ws5
+bindsym $mod+Shift+6 move container to workspace number $ws6
+bindsym $mod+Shift+7 move container to workspace number $ws7
+bindsym $mod+Shift+8 move container to workspace number $ws8
+bindsym $mod+Shift+9 move container to workspace number $ws9
+bindsym $mod+Shift+0 move container to workspace number $ws10
+
+# i3 itself
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r restart
+bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'Log out of TuxOS?' -B 'Yes, log out' 'i3-msg exit'"
+
+mode "resize" {
+        bindsym Left        resize shrink width 10 px or 10 ppt
+        bindsym Down        resize grow height 10 px or 10 ppt
+        bindsym Up          resize shrink height 10 px or 10 ppt
+        bindsym Right       resize grow width 10 px or 10 ppt
+        bindsym Return mode "default"
+        bindsym Escape mode "default"
+        bindsym $mod+r mode "default"
+}
+bindsym $mod+r mode "resize"
+
+bar {
+        status_command i3status
+        position top
+        colors {
+                background #000000
+                statusline #f4f6f8
+                separator  #333333
+                focused_workspace  #f5b800 #f5b800 #000000
+                active_workspace   #333333 #333333 #f4f6f8
+                inactive_workspace #000000 #000000 #a3a3a3
+                urgent_workspace   #ff6b6b #ff6b6b #000000
+        }
+}

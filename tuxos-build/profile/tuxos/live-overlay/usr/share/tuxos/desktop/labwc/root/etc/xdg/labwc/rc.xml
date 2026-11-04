@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<!-- TuxOS defaults for labwc. Copy to ~/.config/labwc/ to customize. -->
+<labwc_config>
+  <theme>
+    <cornerRadius>8</cornerRadius>
+    <font place="">
+      <name>Noto Sans</name>
+      <size>10</size>
+    </font>
+  </theme>
+  <keyboard>
+    <default />
+    <keybind key="W-Return">
+      <action name="Execute" command="foot" />
+    </keybind>
+    <keybind key="W-d">
+      <action name="Execute" command="wofi --show drun" />
+    </keybind>
+    <keybind key="W-e">
+      <action name="Execute" command="thunar" />
+    </keybind>
+    <keybind key="W-b">
+      <action name="Execute" command="firefox" />
+    </keybind>
+    <keybind key="W-q">
+      <action name="Close" />
+    </keybind>
+    <keybind key="Print">
+      <action name="Execute" command="sh -c 'grim &quot;$HOME/Pictures/screenshot-$(date +%Y%m%d-%H%M%S).png&quot;'" />
+    </keybind>
+    <keybind key="XF86AudioRaiseVolume">
+      <action name="Execute" command="wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+" />
+    </keybind>
+    <keybind key="XF86AudioLowerVolume">
+      <action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" />
+    </keybind>
+    <keybind key="XF86AudioMute">
+      <action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" />
+    </keybind>
+  </keyboard>
+  <mouse>
+    <default />
+  </mouse>
+</labwc_config>

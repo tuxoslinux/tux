@@ -1,0 +1,9 @@
+# Automatic game mode (see /usr/lib/tuxos/gamed)
+type            = process
+command         = /usr/lib/tuxos/gamed
+depends-on      = dbus
+waits-for       = power-profiles-daemon
+waits-for       = scx_loader
+after           = local.target
+smooth-recovery = true
+logfile         = /var/log/dinit/tuxos-gamed.log

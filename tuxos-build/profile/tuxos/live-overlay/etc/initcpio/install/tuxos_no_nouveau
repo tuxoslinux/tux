@@ -1,0 +1,17 @@
+#!/bin/bash
+# Live ISO only: leave NVIDIA's nouveau driver and its firmware (over 100 MB)
+# out of the initramfs. udev loads nouveau from the live system right after
+# it is mounted, where the firmware is; the boot animation draws on the
+# firmware framebuffer (SimpleDRM) until then. Must come after artix_kms.
+
+build() {
+    rm -rf "${BUILDROOT}/usr/lib/firmware/nvidia"
+    find "${BUILDROOT}/usr/lib/modules" -name 'nouveau.ko*' -delete
+}
+
+help() {
+    cat <<HELPEOF
+Removes nouveau and the NVIDIA firmware added by the kms hooks, to keep the
+live initramfs small.
+HELPEOF
+}

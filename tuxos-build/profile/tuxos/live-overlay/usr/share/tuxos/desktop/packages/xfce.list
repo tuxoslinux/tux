@@ -1,0 +1,17 @@
+# XFCE
+xfce4
+xfce4-whiskermenu-plugin
+xfce4-screenshooter
+xfce4-pulseaudio-plugin
+xfce4-notifyd
+mousepad
+ristretto
+atril
+xarchiver
+thunar-archive-plugin
+pavucontrol
+network-manager-applet
+blueman
+xorg-xrandr
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

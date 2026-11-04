@@ -1,0 +1,4 @@
+# TuxOS: the file search indexes names only, not file contents (no
+# background disk and CPU load while playing)
+[General]
+only basic indexing=true

@@ -1,0 +1,50 @@
+---
+# TuxOS branding for the Calamares installer.
+componentName:  tuxos
+
+welcomeStyleCalamares:   false
+welcomeExpandingLogo:   true
+
+# A normal window on the Plasma live desktop. 1024x640 (plus the title bar)
+# fits above the panel on 1024x768 and 1366x768 screens; KWin places it
+# inside the free area (Calamares' own centring ignores the panel).
+windowExpanding:    normal
+windowSize: 1024px,640px
+windowPlacement: free
+
+sidebar: widget
+navigation: widget
+
+strings:
+    productName:         TuxOS
+    shortProductName:    TuxOS
+    version:             rolling
+    shortVersion:        rolling
+    versionedName:       TuxOS
+    shortVersionedName:  TuxOS
+    bootloaderEntryName: TuxOS
+    productUrl:          https://github.com/tuxoslinux/tux
+    supportUrl:          https://discord.gg/jvGzaWEB77
+    knownIssuesUrl:      https://github.com/tuxoslinux/tux/issues
+    releaseNotesUrl:     https://github.com/tuxoslinux/tux
+
+images:
+    productBanner:       "tuxos-banner.png"
+    productLogo:         "tuxos-logo.png"
+    productIcon:         "tuxos-icon.png"
+    productWelcome:      "tuxos-welcome.png"
+
+style:
+    SidebarBackground:        "#000000"
+    SidebarText:              "#f4f6f8"
+    SidebarTextCurrent:       "#000000"
+    SidebarBackgroundCurrent: "#f5b800"
+
+slideshow:               "show.qml"
+slideshowAPI: 2
+
+# Never upload installer logs anywhere.
+uploadServer :
+    type :    "none"
+    url :     ""
+    sizeLimit : -1

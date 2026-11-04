@@ -1,0 +1,79 @@
+---
+# TuxOS live ISO.
+# rootfs  = the base system Calamares installs (same package set as build2).
+# livefs  = live-only layer: a small KDE Plasma desktop (SDDM autologin as
+#           the live user) and Calamares, started as "Install TuxOS". The
+#           desktops offered on the "Desktop" page are downloaded during
+#           the installation (lists in live-overlay/usr/share/tuxos/desktop/
+#           packages/).
+
+live-session:
+  user: tuxos
+  password: tuxos
+  autologin: true
+  use-xlibre: false
+  # Enabled in the live system and, through the installer, in installed
+  # ones. Bluetooth is enabled by tuxos-tune setup only on computers with
+  # Bluetooth; no acpid (elogind and the desktops handle ACPI events).
+  services:
+    - chronyd
+    - cronie
+    - cupsd
+    - metalog
+    - NetworkManager
+  # Desktop user services (PipeWire) are linked into /etc/skel by
+  # /usr/lib/tuxos/install-desktop; the stock postcfg module cannot do it.
+  user-services:
+    - dbus
+rootfs:
+  packages:
+    # Arch [extra]/[multilib] and CachyOS support (see /etc/pacman.conf)
+    - artix-archlinux-support
+    - cachyos-keyring
+    - cachyos-mirrorlist
+    - yay
+    - fastfetch
+    # performance layer (/etc/tuxos/performance.conf): process priorities,
+    # sched-ext CPU schedulers for game mode, PCI and disk tweaks
+    - ananicy-cpp
+    - cachyos-ananicy-rules
+    - scx-scheds
+    - scx-tools
+    - pciutils
+    - hdparm
+    # stops the biggest program before the system freezes without memory
+    - earlyoom
+    # fast initramfs compression (/etc/mkinitcpio.conf.d/20-tuxos-boot.conf)
+    - lz4
+    # the installer copies the system with rsync (unpackfs); it used to come
+    # only with rsync-dinit
+    - rsync
+  packages-init:
+    dinit:
+      - dinit-user-spawn
+      - earlyoom-dinit
+      # system log: metalog (about 1 MB of RAM; syslog-ng took 24 MB)
+      - metalog-dinit
+      - networkmanager-dinit
+      - cups-dinit
+livefs:
+  packages:
+    - artix-grub-live
+    - mkinitcpio-nfs-utils
+    - squashfs-tools
+    - calamares
+    - calamares-extensions
+    - breeze
+    - breeze-icons
+    # live desktop: KDE Plasma (Wayland; most of it already comes with the
+    # installer's KDE integration), autologin through SDDM
+    - plasma-desktop
+    - konsole
+    - dolphin
+    - plasma-nm
+    - kscreen
+    - sddm
+  packages-init:
+    dinit:
+      - artix-live-dinit
+      - sddm-dinit

@@ -1,0 +1,285 @@
+#!/bin/bash
+# tuxos-tune: TuxOS performance setup and status.
+#
+#   tuxos-tune status             show what is active (no root needed)
+#   tuxos-tune cpu                show this CPU's optimization level
+#   tuxos-tune repos              use the CachyOS packages built for this
+#                                 CPU (x86-64-v3, -v4 or Zen 4/5) and switch
+#                                 the installed ones over (as root)
+#   tuxos-tune mirrors            rewrite the optimized repositories'
+#                                 mirror lists (pacman hook)
+#   tuxos-tune mitigations on|off CPU vulnerability mitigations (as root).
+#                                 "off" is faster in some games but makes
+#                                 the computer less safe against malicious
+#                                 programs; default on.
+#   tuxos-tune bootmenu           show the GRUB boot menu once, at the next
+#                                 start (as root; the menu is hidden)
+#
+# Used by the TuxOS installer:
+#   tuxos-tune setup --root DIR   optimized repositories and hardware-based
+#                                 service choices for the system at DIR
+#
+# Optimized packages come from CachyOS. They sit after TuxOS' own (Artix)
+# repositories, so the base system (init, libc, udev, ...) always stays
+# Artix's; everything else (the kernel, Mesa from CachyOS, Arch packages)
+# comes in the build for this CPU.
+set -uo pipefail
+
+root=""
+conf_file() { echo "${root}/etc/pacman.conf"; }
+artix_repos=(system world galaxy lib32)
+
+die() { printf 'tuxos-tune: %s\n' "$*" >&2; exit 1; }
+log() { printf 'tuxos-tune: %s\n' "$*"; }
+need_root() { [[ ${EUID} -eq 0 ]] || die "run as root (sudo tuxos-tune $*)"; }
+in_root() { if [[ -n "${root}" ]]; then chroot "${root}" "$@"; else "$@"; fi; }
+
+## CPU level ##################################################################
+
+# v4 / v3 from the dynamic loader (what glibc itself trusts), Zen 4/5 from
+# the vendor: every AMD CPU with AVX-512 is Zen 4 or newer
+cpu_level() {
+    local ld out
+    ld=/lib/ld-linux-x86-64.so.2
+    out="$("${ld}" --help 2>/dev/null)"
+    if grep -q 'x86-64-v4 (supported' <<< "${out}"; then
+        if grep -q -m1 'AuthenticAMD' /proc/cpuinfo; then echo znver4; else echo v4; fi
+    elif grep -q 'x86-64-v3 (supported' <<< "${out}"; then
+        echo v3
+    else
+        echo generic
+    fi
+}
+
+# repositories, pacman architectures and mirror path for a level
+level_repos() {
+    case "$1" in
+        v3) echo "cachyos-v3 cachyos-extra-v3" ;;
+        v4) echo "cachyos-v4 cachyos-extra-v4" ;;
+        znver4) echo "cachyos-znver4 cachyos-extra-znver4" ;;
+    esac
+}
+level_arch() {
+    case "$1" in
+        v3) echo "x86_64 x86_64_v3" ;;
+        v4|znver4) echo "x86_64 x86_64_v3 x86_64_v4" ;;
+    esac
+}
+level_path() {
+    case "$1" in
+        v3) echo x86_64_v3 ;;
+        v4|znver4) echo x86_64_v4 ;;
+    esac
+}
+
+## Repositories ###############################################################
+
+# /etc/pacman.d/tuxos-cachyos-<path>-mirrorlist from CachyOS' own list
+write_mirrors() { # path
+    local src="${root}/etc/pacman.d/cachyos-mirrorlist"
+    local dst="${root}/etc/pacman.d/tuxos-cachyos-$1-mirrorlist"
+    [[ -f "${src}" ]] || die "missing ${src} (package cachyos-mirrorlist)"
+    {
+        echo "# Written by tuxos-tune from cachyos-mirrorlist: CachyOS packages built for $1"
+        sed -n "s|^\(#\? *Server *= *.*\)\\\$arch\(.*\)$|\1$1\2|p" "${src}"
+    } > "${dst}"
+    grep -q '^Server' "${dst}" || die "no mirrors in ${dst}"
+}
+
+# the optimized repositories in pacman.conf, between the Artix ones and
+# Arch's [extra]
+enable_repos() { # level
+    local level="$1" conf path repo block
+    conf="$(conf_file)"
+    path="$(level_path "${level}")"
+    write_mirrors "${path}"
+    block="# BEGIN tuxos-cpu-repos (tuxos-tune repos: CachyOS packages built for this CPU, ${level})"$'\n'
+    for repo in $(level_repos "${level}"); do
+        block+="[${repo}]"$'\n'"Include = /etc/pacman.d/tuxos-cachyos-${path}-mirrorlist"$'\n\n'
+    done
+    block+="# END tuxos-cpu-repos"
+    # drop an older block, then put the new one in front of [extra]
+    sed -i '/^# BEGIN tuxos-cpu-repos/,/^# END tuxos-cpu-repos/d' "${conf}"
+    grep -q '^\[extra\]' "${conf}" || die "no [extra] in ${conf}"
+    BLOCK="${block}" awk '/^\[extra\]$/ && !done { print ENVIRON["BLOCK"]; print ""; done=1 } { print }' \
+        "${conf}" > "${conf}.tuxos-new" && mv "${conf}.tuxos-new" "${conf}"
+    # pacman accepts packages built for these architectures
+    sed -i "s|^#\? *Architecture *=.*|Architecture = $(level_arch "${level}")|" "${conf}"
+}
+
+# reinstall what is installed from a generic repository and exists in an
+# optimized one (never Artix' own packages)
+migrate() { # level
+    local level="$1" repo name ver
+    local -A artix=() installed=() target=()
+    local -a list=()
+    in_root pacman -Sy >/dev/null || die "could not download the package lists"
+    while read -r repo name ver; do artix[$name]=1; done < <(in_root pacman -Sl "${artix_repos[@]}" 2>/dev/null)
+    while read -r name ver; do installed[$name]=1; done < <(in_root pacman -Q)
+    for repo in $(level_repos "${level}"); do
+        while read -r _ name ver _; do
+            [[ -n "${installed[$name]:-}" && -z "${artix[$name]:-}" && -z "${target[$name]:-}" ]] || continue
+            target[$name]="${repo}"
+            list+=("${repo}/${name}")
+        done < <(in_root pacman -Sl "${repo}" 2>/dev/null)
+    done
+    if (( ${#list[@]} == 0 )); then
+        log "nothing to switch over"
+        return 0
+    fi
+    log "switching ${#list[@]} packages to the ${level} builds: ${list[*]}"
+    in_root pacman -S --noconfirm "${list[@]}"
+}
+
+cmd_repos() {
+    local level
+    level="$(cpu_level)"
+    if [[ "${level}" == generic ]]; then
+        log "this CPU has no x86-64-v3 support: the generic packages stay"
+        return 0
+    fi
+    log "CPU level: ${level}"
+    enable_repos "${level}"
+    migrate "${level}"
+}
+
+# pacman hook: cachyos-mirrorlist changed
+cmd_mirrors() {
+    local f path
+    for f in "${root}"/etc/pacman.d/tuxos-cachyos-*-mirrorlist; do
+        [[ -f "${f}" ]] || continue
+        path="${f##*/tuxos-cachyos-}"; path="${path%-mirrorlist}"
+        write_mirrors "${path}"
+    done
+}
+
+## Installer ##################################################################
+
+cmd_setup() {
+    [[ -n "${root}" ]] || die "setup needs --root DIR"
+    # in a subshell: a failure here must not skip the rest
+    ( cmd_repos ) || log "warning: optimized packages not set up; the generic ones stay"
+    # Bluetooth service only for computers with Bluetooth (it is not in the
+    # installer's service list, which would enable it everywhere)
+    if compgen -G '/sys/class/bluetooth/hci*' >/dev/null && [[ -e "${root}/etc/dinit.d/bluetoothd" ]]; then
+        ln -sf /etc/dinit.d/bluetoothd "${root}/etc/dinit.d/boot.d/bluetoothd"
+        log "Bluetooth found: bluetoothd starts at boot"
+    else
+        rm -f "${root}/etc/dinit.d/boot.d/bluetoothd"
+        log "no Bluetooth hardware: bluetoothd not started at boot"
+    fi
+}
+
+## Mitigations ################################################################
+
+cmd_mitigations() {
+    local grub=/etc/default/grub
+    case "${1:-}" in
+        off)
+            # the installer writes the line with single quotes
+            grep -q 'mitigations=off' "${grub}" || \
+                sed -i "s|^\(GRUB_CMDLINE_LINUX_DEFAULT=[\"']\)\(.*\)\([\"']\)$|\1\2 mitigations=off\3|" "${grub}"
+            grep -q 'mitigations=off' "${grub}" || die "could not change ${grub}"
+            log "CPU mitigations off from the next boot. This is faster in some games but"
+            log "leaves the computer open to Spectre-type attacks from malicious programs." ;;
+        on)
+            sed -i 's| mitigations=off||g' "${grub}"
+            log "CPU mitigations on from the next boot" ;;
+        *) die "usage: tuxos-tune mitigations on|off" ;;
+    esac
+    grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || die "grub-mkconfig failed"
+}
+
+## Boot menu ##################################################################
+
+# /etc/grub.d/31_tuxos-menu reads tuxos_menu from GRUB's environment block
+cmd_bootmenu() {
+    if grep -q 'TuxOS: boot menu safety net' /boot/grub/grub.cfg 2>/dev/null; then
+        grub-editenv /boot/grub/grubenv set tuxos_menu=1 || die "could not write /boot/grub/grubenv"
+        log "the boot menu shows at the next start and waits for a choice"
+    elif grep -q 'TuxOS: boot menu hidden; Esc' /boot/grub/grub.cfg 2>/dev/null; then
+        log "on this computer GRUB waits 1 s at every start: press Esc then to see the menu"
+    else
+        log "the boot menu is not hidden on this computer (/etc/default/grub)"
+    fi
+}
+
+## Status #####################################################################
+
+show() { printf '  %-26s %s\n' "$1" "$2"; }
+read_sys() { cat "$1" 2>/dev/null || echo "-"; }
+
+cmd_status() {
+    local level repos sched zram dev
+    echo "TuxOS performance status"
+    echo
+    echo "CPU"
+    show "CPU" "$(sed -n 's/^model name\s*: //p' /proc/cpuinfo | head -n1)"
+    level="$(cpu_level)"
+    repos="$(sed -n 's/^# BEGIN tuxos-cpu-repos.*, \(.*\))$/\1/p' /etc/pacman.conf)"
+    show "optimization level" "${level} (packages: ${repos:-generic})"
+    show "kernel" "$(uname -r) ($(pacman -Qi linux-cachyos 2>/dev/null | sed -n 's/^Architecture *: //p'))"
+    show "frequency driver" "$(read_sys /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)"
+    show "power profile" "$(gdbus call --system --dest org.freedesktop.UPower.PowerProfiles \
+        --object-path /org/freedesktop/UPower/PowerProfiles \
+        --method org.freedesktop.DBus.Properties.Get org.freedesktop.UPower.PowerProfiles ActiveProfile \
+        2>/dev/null | sed -n "s/^(<'\(.*\)'>,)$/\1/p")"
+    sched="$(scxctl get 2>/dev/null | head -n1)"
+    show "CPU scheduler" "$( [[ -n "${sched}" && "${sched}" != *"no scx"* ]] && echo "${sched}" || echo "BORE (kernel)")"
+    show "mitigations" "$(grep -q 'mitigations=off' /proc/cmdline && echo off || echo on)"
+    if grep -q 'split_lock_detect=off' /proc/cmdline; then
+        show "split-lock penalty" "off (detection off)"
+    else
+        show "split-lock penalty" "$( [[ "$(sysctl -n kernel.split_lock_mitigate 2>/dev/null)" == 0 ]] && echo off || echo on)"
+    fi
+    echo
+    echo "Memory"
+    zram="$(swapon --show=NAME,SIZE,PRIO --noheadings 2>/dev/null | awk '/zram/ {print $2 ", priority " $3}')"
+    show "zram" "${zram:-off} ($(read_sys /sys/block/zram0/comp_algorithm | grep -o '\[[^]]*\]'))"
+    show "swappiness" "$(sysctl -n vm.swappiness)"
+    show "transparent huge pages" "$(grep -o '\[[^]]*\]' /sys/kernel/mm/transparent_hugepage/enabled)"
+    show "MGLRU min_ttl_ms" "$(read_sys /sys/kernel/mm/lru_gen/min_ttl_ms)"
+    show "max_map_count" "$(sysctl -n vm.max_map_count)"
+    echo
+    echo "Disks"
+    for dev in /sys/block/nvme* /sys/block/sd* /sys/block/vd* /sys/block/mmcblk*; do
+        [[ -e "${dev}/queue/scheduler" ]] || continue
+        show "${dev##*/}" "$(grep -o '\[[^]]*\]' "${dev}/queue/scheduler")"
+    done
+    for dev in /sys/class/nvme/nvme*; do
+        [[ -r "${dev}/power/pm_qos_latency_tolerance_us" ]] || continue
+        show "${dev##*/} power saving" "$( [[ "$(<"${dev}/power/pm_qos_latency_tolerance_us")" == 0 ]] && echo "off (no wake-up delays)" || echo on)"
+    done
+    echo
+    echo "Games"
+    show "game mode" "$(read_sys /run/tuxos-gamed/mode) (tuxos-gamed)"
+    show "ntsync" "$( [[ -e /dev/ntsync ]] && echo ready || echo missing)"
+    show "network" "$(sysctl -n net.ipv4.tcp_congestion_control) / $(sysctl -n net.core.default_qdisc)"
+    echo
+    echo "Services"
+    for s in tuxos-zram tuxos-gamed tuxos-tweaks tuxos-bootok ananicy-cpp scx_loader power-profiles-daemon earlyoom; do
+        show "${s}" "$(dinitctl status "${s}" 2>/dev/null | sed -n 's/^ *State: *//p' | head -n1)"
+    done
+}
+
+## main #######################################################################
+
+args=()
+while (( $# )); do
+    case "$1" in
+        --root) root="$2"; shift 2 ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+set -- "${args[@]}"
+
+case "${1:-status}" in
+    status) cmd_status ;;
+    cpu) cpu_level ;;
+    repos) need_root repos; cmd_repos ;;
+    mirrors) need_root mirrors; cmd_mirrors ;;
+    setup) need_root setup; cmd_setup ;;
+    mitigations) need_root mitigations; cmd_mitigations "${2:-}" ;;
+    bootmenu) need_root bootmenu; cmd_bootmenu ;;
+    *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
