@@ -1,7 +1,7 @@
 ---
 # TuxOS live ISO.
 # rootfs  = the base system Calamares installs (same package set as build2).
-# livefs  = live-only layer: a small KDE Plasma desktop (SDDM autologin as
+# livefs  = live-only layer: the COSMIC desktop (SDDM autologin as
 #           the live user) and Calamares, started as "Install TuxOS". The
 #           desktops offered on the "Desktop" page are downloaded during
 #           the installation (lists in live-overlay/usr/share/tuxos/desktop/
@@ -65,13 +65,14 @@ livefs:
     - calamares-extensions
     - breeze
     - breeze-icons
-    # live desktop: KDE Plasma (Wayland; most of it already comes with the
-    # installer's KDE integration), autologin through SDDM
-    - plasma-desktop
-    - konsole
-    - dolphin
-    - plasma-nm
-    - kscreen
+    # live desktop: COSMIC (Wayland, stock look), autologin through SDDM;
+    # Calamares runs through XWayland. COSMIC needs a Vulkan driver: the
+    # software one, or pacman would pick an NVIDIA driver (300 MB)
+    - cosmic-session
+    - cosmic-terminal
+    - cosmic-files
+    - cosmic-wallpapers
+    - vulkan-swrast
     - sddm
   packages-init:
     dinit:

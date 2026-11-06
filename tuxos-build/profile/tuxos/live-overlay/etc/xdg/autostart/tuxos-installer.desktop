@@ -5,4 +5,4 @@ Comment=Opens the TuxOS installer when the live session starts
 Icon=/usr/share/pixmaps/tuxos-logo.png
 Exec=/usr/lib/tuxos/run-installer
 Terminal=false
-OnlyShowIn=KDE;
+OnlyShowIn=COSMIC;

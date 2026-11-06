@@ -1,11 +1,16 @@
 # TuxOS installer build
 
 Builds `tuxos-<date>-x86_64.iso`: a live ISO (under 2 GB) that boots into a
-KDE Plasma live desktop, where the TuxOS-branded Calamares installer opens
-by itself ("Install TuxOS" in the menu reopens it). It installs the build2
-system (TuxOS with NetworkManager, dinit) plus the desktop picked on the
-installer's "Desktop" page: KDE Plasma, Hyprland, Cinnamon, Budgie, LXQt,
-Labwc, XFCE, i3 or none. It is an online installer: the desktop and the
+COSMIC live desktop (stock look, since build9), where the TuxOS-branded
+Calamares installer opens by itself, full screen ("Install TuxOS" in the
+dock reopens it). It installs the build2 system (TuxOS with NetworkManager,
+dinit) plus the desktop picked on the installer's "Desktop" page: KDE
+Plasma, COSMIC, Hyprland, Cinnamon, Budgie, MATE, LXQt, Labwc, XFCE, i3 or
+none. COSMIC and MATE come from Artix itself. Pantheon was tried for build9
+and left out: Artix' gnome-session cannot start it without systemd, and
+Arch's Pantheon 8 packages are broken (applications menu built for the old
+panel, power indicator crashes the panel). Lingmo UI has no working Arch
+packages. It is an online installer: the desktop and the
 drivers are downloaded during the installation, so the installer requires
 an internet connection (an empty file `profile/tuxos/offline-repo` brings
 back the 1.1 GB offline repository).
@@ -95,15 +100,22 @@ ever overwritten) with the ISO and its `.sha256`, and a row in
 | `profile/tuxos/root-overlay/usr/bin/tuxos-drivers` | Hardware detection and driver install (NVIDIA: driver series from `usr/share/tuxos/drivers/*.ids`, refreshed by `tools/update-nvidia-ids`; AMD/Intel Vulkan and video; Broadcom Wi-Fi; VM guest tools) |
 | `profile/tuxos/live-overlay/usr/share/tuxos/desktop/` | Per-desktop package lists (`packages/*.list`, downloaded by the installer) and TuxOS defaults (`<desktop>/root`, `<desktop>/skel`, `common/` incl. the SDDM theme) |
 | `profile/tuxos/live-overlay/usr/lib/tuxos/install-desktop` | Run by the installer: pacman keyring, desktop packages (downloaded, with a full upgrade), login screen, per-desktop setup |
-| `test/` | Headless QEMU tests: `install-test.sh uefi|bios ISO`, `desktop-test.sh <desktop> ISO` (3D GPU, logs in and checks the session), `drivers-test.sh` (driver choices for 15 simulated machines). The installer is a window on the live desktop: `calamares.py` finds it in a screenshot and maps the tests' clicks onto it. The install test ends with an audit of the installed system (dinit services, kernel errors, pacman database and files, broken links, installer log) written to `run/<fw>-serial.log`. QEMU/KVM tests crash if a VirtualBox VM runs at the same time |
+| `test/` | Headless QEMU tests: `install-test.sh uefi|bios ISO`, `desktop-test.sh <desktop> ISO` (3D GPU, logs in and checks the session), `drivers-test.sh` (driver choices for 15 simulated machines). The installer fills the live desktop between COSMIC's panel and dock: `calamares.py` finds it in a screenshot and maps the tests' clicks onto it. `desktop-test.sh` with `SKIP_INSTALL=1` boots and checks the disk of an earlier run. The install test ends with an audit of the installed system (dinit services, kernel errors, pacman database and files, broken links, installer log) written to `run/<fw>-serial.log`. QEMU/KVM tests crash if a VirtualBox VM runs at the same time |
 
 How the live ISO reaches the installer: GRUB boots "Install TuxOS" after
 5 seconds (`quiet`, no boot animation) → SDDM logs the live
-user `tuxos` (password `tuxos`) into Plasma (Wayland) → the autostart entry
+user `tuxos` (password `tuxos`) into COSMIC (Wayland) → the autostart entry
 runs `/usr/lib/tuxos/run-installer`, which writes the Drivers page for this
-computer and starts Calamares as root (through XWayland). The live session
-never suspends or locks (`live-overlay/etc/skel/.config/powerdevilrc`,
-`kscreenlockerrc`, `etc/elogind/logind.conf.d`). The live initramfs leaves
+computer and starts Calamares as root, full screen (through XWayland;
+COSMIC opens a Calamares window only at its 1024x520 minimum size, where
+the sidebar scrolls). The live session never turns the screen off or
+suspends (`live-overlay/etc/skel/.config/cosmic/com.system76.CosmicIdle`,
+`etc/elogind/logind.conf.d`). Only COSMIC's default wallpaper is kept on the
+ISO, and the live ISO does not switch on swap partitions it finds
+(artix-live does): the installer would treat that disk as in use and hide
+"Erase disk". Dual boot: the installer offers "Install alongside" when it
+finds another system, and the installed GRUB lists it through os-prober,
+which needs `fuse3` (for `grub-mount`) on the installed system. The live initramfs leaves
 out nouveau and NVIDIA's firmware (`live-overlay/etc/initcpio/install/
 tuxos_no_nouveau`): they load from the live system, which keeps the ISO
 small.

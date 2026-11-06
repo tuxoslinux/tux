@@ -5,10 +5,10 @@ componentName:  tuxos
 welcomeStyleCalamares:   false
 welcomeExpandingLogo:   true
 
-# A normal window on the Plasma live desktop. 1024x640 (plus the title bar)
-# fits above the panel on 1024x768 and 1366x768 screens; KWin places it
-# inside the free area (Calamares' own centring ignores the panel).
-windowExpanding:    normal
+# Full screen on the COSMIC live desktop: COSMIC opens a Calamares window
+# at its minimum size (1024x520), where the sidebar scrolls and hides
+# "Install" and "Finish". windowSize is the size when leaving full screen.
+windowExpanding:    fullscreen
 windowSize: 1024px,640px
 windowPlacement: free
 

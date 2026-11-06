@@ -101,6 +101,19 @@ xkb_value() { # option-name
 }
 layout="$(xkb_value XkbLayout)" variant="$(xkb_value XkbVariant)"
 layout="${layout:-us}"
+# the same layouts as GSettings input sources ("us,bg" with variants ","
+# becomes ('xkb', 'us'), ('xkb', 'bg'))
+gnome_input_sources() {
+    local layouts variants i src sources=""
+    IFS=, read -r -a layouts <<< "${layout}"
+    IFS=, read -r -a variants <<< "${variant}"
+    for i in "${!layouts[@]}"; do
+        src="${layouts[$i]}"
+        [[ -n "${variants[$i]:-}" ]] && src+="+${variants[$i]}"
+        sources+="${sources:+, }('xkb', '${src}')"
+    done
+    printf '%s' "${sources}"
+}
 
 session=""
 case "${desktop}" in
@@ -136,19 +149,21 @@ case "${desktop}" in
         sed -i -e "s/^XKB_DEFAULT_LAYOUT=.*/XKB_DEFAULT_LAYOUT=${layout}/" \
                -e "s/^XKB_DEFAULT_VARIANT=.*/XKB_DEFAULT_VARIANT=${variant}/" \
             "${skel_labwc}/environment"
-        # Budgie's bridge takes the keyboard layout from GSettings first:
-        # the layouts chosen in the installer ("us,bg" with variants ",")
-        IFS=, read -r -a layouts <<< "${layout}"
-        IFS=, read -r -a variants <<< "${variant}"
-        sources=""
-        for i in "${!layouts[@]}"; do
-            src="${layouts[$i]}"
-            [[ -n "${variants[$i]:-}" ]] && src+="+${variants[$i]}"
-            sources+="${sources:+, }('xkb', '${src}')"
-        done
+        # Budgie's bridge takes the keyboard layout from GSettings first
         printf '# Keyboard layout chosen in the TuxOS installer\n[org.gnome.desktop.input-sources:Budgie]\nsources=[%s]\n' \
-            "${sources}" > "${root}/usr/share/glib-2.0/schemas/91_tuxos-budgie-keyboard.gschema.override"
+            "$(gnome_input_sources)" > "${root}/usr/share/glib-2.0/schemas/91_tuxos-budgie-keyboard.gschema.override"
         in_target glib-compile-schemas /usr/share/glib-2.0/schemas
+        ;;
+    cosmic)
+        session=/usr/share/wayland-sessions/cosmic.desktop
+        # COSMIC's compositor reads the keyboard layout from its own settings
+        xkb="${root}/etc/skel/.config/cosmic/com.system76.CosmicComp/v1/xkb_config"
+        mkdir -p "$(dirname "${xkb}")"
+        printf '(\n    rules: "",\n    model: "pc105",\n    layout: "%s",\n    variant: "%s",\n    options: None,\n    repeat_delay: 600,\n    repeat_rate: 25,\n)\n' \
+            "${layout}" "${variant}" > "${xkb}"
+        ;;
+    mate)
+        session=/usr/share/xsessions/mate.desktop
         ;;
     lxqt)
         session=/usr/share/xsessions/lxqt.desktop

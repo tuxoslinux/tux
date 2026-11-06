@@ -6,3 +6,4 @@ Icon=/usr/share/pixmaps/tuxos-logo.png
 Exec=/usr/lib/tuxos/run-installer
 Terminal=false
 Categories=System;
+StartupWMClass=calamares

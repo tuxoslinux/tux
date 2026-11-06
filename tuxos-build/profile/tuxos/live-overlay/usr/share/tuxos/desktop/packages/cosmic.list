@@ -1,0 +1,17 @@
+# COSMIC (Wayland, System76's Rust desktop; packaged by Artix, no systemd)
+cosmic-session
+cosmic-terminal
+cosmic-files
+cosmic-text-editor
+cosmic-viewer
+cosmic-player
+cosmic-monitor
+cosmic-wallpapers
+# COSMIC needs a Vulkan driver: without this, pacman would pick the first
+# one it knows (an NVIDIA driver). The drivers step adds the right ones.
+vulkan-swrast
+network-manager-applet
+blueman
+adwaita-fonts
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

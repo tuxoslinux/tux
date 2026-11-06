@@ -96,9 +96,11 @@ card() { # id title subtitle
         "${out}/calamares/desktop-$1.png"
 }
 card plasma   "KDE Plasma" "Modern, polished and very customizable"
+card cosmic   "COSMIC"     "Fast new Wayland desktop from System76"
 card hyprland "Hyprland"   "Tiling Wayland compositor with animations"
 card cinnamon "Cinnamon"   "Traditional, friendly and easy to use"
 card budgie   "Budgie"     "Elegant and simple, with the Raven side bar"
+card mate     "MATE"       "The classic desktop, continuing GNOME 2"
 card lxqt     "LXQt"       "Lightweight Qt desktop for any computer"
 card labwc    "Labwc"      "Simple, fast stacking Wayland compositor"
 card xfce     "XFCE"       "Light, fast and dependable"

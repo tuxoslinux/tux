@@ -6,11 +6,13 @@ Instructions for AI coding agents working in `~/tuxos`.
 
 TuxOS is a Linux distribution built on Artix Linux (Arch without systemd)
 with the dinit init system and the CachyOS kernel (`linux-cachyos`). The ISO
-(kept under 2 GB) boots into a KDE Plasma live desktop where the
-TuxOS-branded Calamares installer opens as a window ("Install TuxOS"). It is
-an online installer: it installs the base system from the ISO, then
-downloads the desktop picked on its "Desktop" page (KDE Plasma, Hyprland,
-Cinnamon, Budgie, LXQt, Labwc, XFCE, i3 or none), the best drivers for the
+(kept under 2 GB) boots into a COSMIC live desktop (stock look, since
+build9) where the TuxOS-branded Calamares installer opens full screen
+("Install TuxOS"). It is an online installer: it installs the base system
+from the ISO, then downloads the desktop picked on its "Desktop" page (KDE
+Plasma, COSMIC, Hyprland, Cinnamon, Budgie, MATE, LXQt, Labwc, XFCE, i3 or
+none; Pantheon and Lingmo UI were tried and left out, see
+`tuxos-build/README.md`), the best drivers for the
 hardware (`tuxos-drivers`) and, on its "Gaming" page, Steam and the gaming
 apps (`tuxos-gaming`). Internet is required.
 
@@ -57,7 +59,8 @@ cd ~/tuxos/tuxos-build && ./build.sh
 
 - A new build chroot comes from `tools/make-chroot.sh ARTIX_DINIT_ISO`
   (tested 2026-11-04). sudo is refused in terminals started from the
-  Claude app ("no new privileges"): the owner runs sudo commands in Konsole.
+  Claude app ("no new privileges"): the owner runs sudo commands in their
+  own terminal (kitty).
 
 - `build.sh` needs root several times over ~5-10 minutes. There is no
   passwordless sudo: start it in the owner's terminal so they type the
@@ -142,3 +145,10 @@ run tests while the owner uses VirtualBox. Never touch other VMs (for example
   only thing installing `rsync`, which the installer's file copy (unpackfs)
   needs, so `rsync` is now listed in the rootfs packages itself. Before
   dropping a package, check what it brings in.
+- os-prober mounts other systems with `grub-mount`, which fails silently
+  without `fuse3`: GRUB then never lists Windows or another Linux. `fuse3`
+  is in `common.yaml` for that.
+- artix-live switches on any swap partition it finds; the installer then
+  hides "Erase disk" for that disk. `customize-livefs.sh` turns that off.
+- COSMIC opens Calamares (X11 or Wayland) at its minimum size; the installer
+  is full screen because of that (`branding.desc`).

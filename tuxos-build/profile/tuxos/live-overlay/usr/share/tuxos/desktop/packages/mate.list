@@ -1,0 +1,20 @@
+# MATE (X11, the classic GNOME 2 desktop)
+mate
+mate-terminal
+pluma
+atril
+eom
+engrampa
+caja-open-terminal
+mate-calc
+mate-media
+mate-power-manager
+mate-screensaver
+mate-system-monitor
+mate-utils
+mate-applets
+network-manager-applet
+blueman
+papirus-icon-theme
+# secrets (passwords for apps; Plasma has its own)
+gnome-keyring

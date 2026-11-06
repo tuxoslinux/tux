@@ -1,4 +1,0 @@
-# Live session: never lock the screen
-[Daemon]
-Autolock=false
-LockOnResume=false

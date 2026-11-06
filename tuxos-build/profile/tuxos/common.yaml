@@ -31,6 +31,9 @@ packages-base:
   - net-tools
   - ntfs-3g
   - os-prober
+  # os-prober mounts other systems with grub-mount, which needs fuse3:
+  # without it GRUB never lists Windows or another Linux (dual boot)
+  - fuse3
   - sudo
   - sysfsutils
   - usbutils
