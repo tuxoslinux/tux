@@ -1,0 +1,7 @@
+# TPM unlock (tuxos-tpm): after a firmware or boot loader update this start
+# asked for the disk password; seal the key to the new state, so the next
+# start opens the disk by itself again. Does nothing when TPM unlock is off.
+type    = scripted
+command = /usr/bin/tuxos-tpm reseal
+restart = false
+after   = login.target

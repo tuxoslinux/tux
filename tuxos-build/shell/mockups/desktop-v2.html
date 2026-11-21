@@ -1,0 +1,544 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TuxOS desktop v2 states</title>
+<!-- states via the URL hash: #plain #ws-hover #ws-slide #clock #status -->
+<style>
+:root {
+  --accent: #8fb8ff;
+  --text: #f4f7fb;
+  --muted: #8b95a5;
+  --dim: #4c5463;
+  --line: rgba(200, 220, 255, 0.10);
+  --glass-tint: rgba(10, 12, 16, 0.62);   /* the one glass used everywhere */
+  --glass-blur: 34px;
+  --glass-line: rgba(210, 225, 255, 0.10);
+  --ui: "Adwaita Sans", "Noto Sans", sans-serif;
+  --mono: "JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--ui); color: var(--text); }
+.bg { position: absolute; inset: 0; background: url("wallpaper.png") center / cover; }
+
+/* glass = blurred wallpaper copy + tint (headless renderers do not blur reliably) */
+.gb { position: absolute; inset: 0; overflow: hidden; z-index: -1; border-radius: inherit; }
+.gb div { position: absolute; width: 1920px; height: 1080px; background: url("wallpaper.png") center / cover; filter: blur(var(--glass-blur)) brightness(0.9); }
+.gb::after { content: ""; position: absolute; inset: 0; background: var(--glass-tint); }
+.bar, .win, .hint { isolation: isolate; }
+/* ---- top bar (as desktop-v1) ---- */
+.bar {
+  position: absolute; left: 12px; right: 12px; top: 10px; height: 46px; z-index: 5;
+  border-radius: 16px; background: transparent;
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.035);
+  backdrop-filter: blur(30px);
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px;
+}
+.left, .right { display: flex; align-items: center; gap: 6px; }
+.right { justify-content: flex-end; }
+.logo { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; }
+.logo img { width: 22px; }
+.ws { position: relative; display: flex; align-items: center; gap: 4px; margin-left: 6px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid transparent; }
+.ws span { position: relative; z-index: 1; width: 30px; height: 26px; border-radius: 9px; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--dim); }
+.ws span.used { color: var(--text); }
+.ws span.on { width: 44px; background: var(--accent); color: #0b1424; }
+.clock { font-size: 15px; font-weight: 600; letter-spacing: 0.2px; padding: 7px 14px; border-radius: 11px; }
+.clock span { color: var(--muted); font-weight: 500; margin-left: 10px; }
+.right i { font-style: normal; font-family: var(--mono); font-size: 16px; color: var(--text); height: 34px; min-width: 34px; display: grid; place-items: center; border-radius: 11px; }
+.right .group { display: flex; align-items: center; gap: 2px; padding: 0 6px; height: 34px; border-radius: 11px; background: rgba(255,255,255,0.04); }
+.right .group i { min-width: 28px; }
+.right .bat { font-size: 13px; color: var(--muted); margin-right: 6px; font-weight: 500; }
+.right .pw { color: var(--muted); }
+
+/* hover / active looks */
+body.ws-hover .ws, body.ws-slide .ws { background: rgba(143,184,255,0.10); border-color: rgba(143,184,255,0.25); }
+body.clock .clock { background: rgba(143,184,255,0.12); }
+body.status .group { background: rgba(143,184,255,0.16); box-shadow: inset 0 0 0 1px rgba(143,184,255,0.3); }
+.hint { position: absolute; top: 66px; left: 66px; z-index: 6; font-size: 12.5px; color: var(--muted); padding: 7px 12px; border-radius: 10px; background: transparent; border: 1px solid var(--line); backdrop-filter: blur(20px); display: none; }
+.hint i { font-style: normal; font-family: var(--mono); color: var(--accent); margin-right: 6px; }
+body.ws-hover .hint { display: block; }
+/* sliding pill between 2 and 3 */
+.slider { position: absolute; z-index: 0; top: 4px; height: 26px; border-radius: 9px; background: linear-gradient(90deg, rgba(143,184,255,0.55), var(--accent)); display: none; }
+body.ws-slide .slider { display: block; left: 46px; width: 60px; }
+body.ws-slide .ws span.on { background: none; width: 30px; color: var(--text); }
+body.ws-slide .ws span.next { color: #0b1424; }
+
+/* windows, for the slide */
+.win { position: absolute; border-radius: 18px; background: transparent; border: 1px solid rgba(210,225,255,0.10); box-shadow: 0 30px 80px rgba(0,0,0,0.5); backdrop-filter: blur(30px); overflow: hidden; display: none; }
+.win .tb { height: 40px; display: flex; align-items: center; padding: 0 16px; gap: 8px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.win .tb b { margin: 0 auto; font-weight: 500; }
+.win .tb .x { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+.win.a pre { padding-left: 380px; }
+.win pre { font-family: var(--mono); font-size: 14px; line-height: 1.6; padding: 18px 20px; color: #cfd6e2; }
+.win pre .p { color: var(--accent); }
+body.ws-slide .win { display: block; }
+.win.a { left: -330px; top: 210px; width: 820px; height: 520px; opacity: 0.85; }
+.win.b { left: 1220px; top: 180px; width: 900px; height: 600px; opacity: 0.9; }
+
+/* ---- droplet panels ---- */
+.drop { position: absolute; z-index: 4; display: none; }
+.drop .fill { position: absolute; inset: 0; isolation: isolate; }
+.drop svg { position: absolute; inset: 0; overflow: visible; }
+.drop .body { position: absolute; left: 0; right: 0; bottom: 0; }
+body.clock .drop.cal, body.status .drop.st { display: block; }
+
+/* clock panel */
+.cal .body { top: 32px; padding: 30px 32px 28px; }
+.bigtime { font-size: 64px; font-weight: 700; letter-spacing: -2.5px; line-height: 1; }
+.bigtime .c { color: var(--accent); margin: 0 1px 0 -2px; }
+.bigtime .s .c2 { margin: 0 1px 0 -12px; }
+.bigtime .s { color: var(--muted); font-weight: 600; }
+.fulldate { margin-top: 10px; font-size: 16px; color: var(--muted); }
+.month { margin-top: 26px; display: flex; align-items: center; font-size: 16px; font-weight: 600; }
+.month .nav { margin-left: auto; display: flex; gap: 6px; font-family: var(--mono); color: var(--muted); font-size: 15px; }
+.month .nav span { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(255,255,255,0.05); }
+.grid { margin-top: 14px; display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 6px; text-align: center; font-size: 14px; }
+.grid .dow { font-size: 12px; color: var(--dim); font-weight: 600; padding-bottom: 6px; }
+.grid .d { height: 38px; display: grid; place-items: center; border-radius: 12px; color: var(--text); }
+.grid .d.o { color: var(--dim); }
+.grid .d.we { color: var(--muted); }
+.grid .d.today { background: var(--accent); color: #0b1424; font-weight: 700; }
+.scrollhint { margin-top: 14px; font-size: 12.5px; color: var(--dim); text-align: center; }
+.scrollhint i { font-style: normal; font-family: var(--mono); margin-right: 6px; }
+
+/* status panel */
+.st .body { top: 32px; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+.batt { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+.batt .cell { width: 64px; height: 30px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.6); position: relative; padding: 3px; }
+.batt .cell::after { content: ""; position: absolute; right: -7px; top: 9px; width: 4px; height: 8px; border-radius: 0 2px 2px 0; background: rgba(255,255,255,0.6); }
+.batt .cell div { height: 100%; width: 86%; border-radius: 4px; background: var(--accent); }
+.batt .pct { font-size: 30px; font-weight: 700; letter-spacing: -1px; }
+.batt .sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tile { padding: 16px 18px; border-radius: 20px; background: rgba(143,184,255,0.14); border: 1px solid rgba(143,184,255,0.28); display: flex; flex-direction: column; gap: 14px; }
+.tile .tophit { display: flex; align-items: center; }
+.tile .top i { font-style: normal; font-family: var(--mono); font-size: 20px; color: var(--accent); }
+.tile .tg { margin-left: auto; width: 38px; height: 22px; border-radius: 11px; background: var(--accent); position: relative; }
+.tile .tg::after { content: ""; position: absolute; right: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #0b1424; }
+.tile .n { font-size: 15px; font-weight: 600; }
+.tile .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.list { padding: 8px; border-radius: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--line); }
+.li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; font-size: 14px; }
+.li i { font-style: normal; font-family: var(--mono); color: var(--muted); width: 18px; }
+.li .r { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.li.on { background: rgba(255,255,255,0.05); }
+.li.on i, .li.on .r { color: var(--accent); }
+.slid { display: flex; align-items: center; gap: 14px; padding: 6px 6px; }
+.slid i { font-style: normal; font-family: var(--mono); color: var(--text); width: 20px; font-size: 16px; }
+.slid .tr { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.10); position: relative; }
+.slid .tr div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.slid .tr div::after { content: ""; position: absolute; right: -8px; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.prof { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255,255,255,0.04); }
+.prof span { text-align: center; font-size: 13px; padding: 9px 0; border-radius: 11px; color: var(--muted); }
+.prof span.on { background: var(--accent); color: #0b1424; font-weight: 600; }
+.cursor { position: absolute; z-index: 9; width: 22px; height: 30px; display: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+body.ws-hover .cursor, body.ws-slide .cursor { display: block; left: 232px; top: 34px; }
+body.live-music-hover .cursor, body.live-video-hover .cursor { display: block; left: 1010px; top: 42px; }
+body.clock .cursor { display: block; left: 984px; top: 30px; }
+body.status .cursor { display: block; left: 1812px; top: 40px; }
+/* ---- dock ---- */
+.dock { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; isolation: isolate;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px 14px; border-radius: 26px;
+  border: 1px solid var(--glass-line); box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.035); }
+.app { position: relative; width: 58px; height: 58px; border-radius: 17px; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 28px; color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.35); }
+.app::after { content: ""; position: absolute; bottom: -10px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: transparent; }
+.app.run::after { background: rgba(244,247,251,0.7); }
+.app.focus::after { width: 16px; margin-left: -8px; border-radius: 3px; background: var(--accent); }
+.app { background: linear-gradient(160deg, rgba(255,255,255,0.17), rgba(255,255,255,0.06)); color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 0 0 1px rgba(255,255,255,0.05), 0 4px 12px rgba(0,0,0,0.3); }
+.dsep { width: 1px; height: 40px; background: var(--glass-line); margin: 0 2px; }
+/* ---- minimize / maximize frames ---- */
+.win.c { display: none; left: 460px; top: 190px; width: 1000px; height: 620px; transform-origin: 0 0; z-index: 3; }
+body.min1 .win.c, body.min2 .win.c, body.min3 .win.c, body.max1 .win.c, body.max2 .win.c, body.max3 .win.c { display: block; }
+body.max3 .dock { transform: translate(-50%, 140%); }
+.ghostdock { display: none; }
+.app.glow { box-shadow: 0 0 0 2px rgba(143,184,255,0.7), 0 0 24px rgba(143,184,255,0.55), inset 0 1px 0 rgba(255,255,255,0.18); }
+
+/* ---- app launcher (Super) ---- */
+.dim { position: absolute; inset: 0; z-index: 6; background: rgba(4,6,10,0.45); display: none; }
+.launcher { position: absolute; z-index: 7; left: 50%; top: 168px; transform: translateX(-50%); width: 760px; border-radius: 30px;
+  border: 1px solid var(--glass-line); box-shadow: 0 40px 120px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.035);
+  isolation: isolate; display: none; padding: 22px 22px 18px; }
+body.lopen .dim, body.lopen .launcher, body.lsearch .dim, body.lsearch .launcher { display: block; }
+.search { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 18px 0 20px; border-radius: 20px;
+  background: rgba(0,0,0,0.28); border: 1px solid rgba(143,184,255,0.45); }
+.search i { font-style: normal; font-family: var(--mono); font-size: 22px; color: var(--accent); }
+.search .q { flex: 1; font-size: 20px; color: var(--muted); }
+.search .q b { color: var(--text); font-weight: 500; }
+.search .q b::after { content: ""; display: inline-block; width: 2px; height: 22px; background: var(--accent); vertical-align: -4px; margin-left: 2px; }
+.key { font-size: 12px; color: var(--muted); padding: 4px 9px; border-radius: 7px; border: 1px solid var(--glass-line); background: rgba(255,255,255,0.04); }
+.lsec { margin: 22px 6px 12px; font-size: 12.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+.lgrid { display: grid; grid-template-columns: repeat(6, 1fr); row-gap: 18px; }
+.lapp { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 12px 0 10px; border-radius: 18px; }
+.lapp .app { width: 62px; height: 62px; font-size: 29px; }
+.lapp .app::after { display: none; }
+.lapp span { font-size: 13.5px; color: #d9dfe8; }
+.lapp.sel { background: rgba(143,184,255,0.12); box-shadow: inset 0 0 0 1px rgba(143,184,255,0.3); }
+.lfoot { margin-top: 16px; display: flex; gap: 18px; justify-content: center; font-size: 12.5px; color: var(--dim); }
+.lfoot span b { color: var(--muted); font-weight: 600; margin-right: 5px; }
+.res { display: none; }
+body.lsearch .res { display: block; }
+body.lsearch .apps-view { display: none; }
+.tophit { display: flex; align-items: center; gap: 18px; padding: 16px; border-radius: 20px; background: rgba(143,184,255,0.12); box-shadow: inset 0 0 0 1px rgba(143,184,255,0.3); }
+.tophit .app { width: 64px; height: 64px; font-size: 30px; }
+.tophit .app::after { display: none; }
+.tophit .n { font-size: 19px; font-weight: 600; }
+.tophit .m { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+.tophit .go { margin-left: auto; font-size: 13px; color: var(--accent); }
+.row { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 14px; }
+.row .app { width: 40px; height: 40px; border-radius: 12px; font-size: 19px; }
+.row .app::after { display: none; }
+.row .n { font-size: 15px; }
+.row .m { font-size: 12.5px; color: var(--muted); margin-left: auto; }
+/* ---- volume / brightness flyouts ---- */
+body.osd-vol .drop.osd, body.osd-bri .drop.osd { display: block; }
+.osd .body { top: 32px; padding: 18px 22px 20px; }
+.osd .hd { display: flex; align-items: center; gap: 14px; }
+.osd .hd .ic { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-family: var(--mono); font-size: 21px; color: #0b1424; background: var(--accent); }
+.osd .hd .n { font-size: 15px; font-weight: 600; }
+.osd .hd .m { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.osd .hd .pct { margin-left: auto; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.osd .trk { margin-top: 16px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.10); position: relative; }
+.osd .trk div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(90deg, #6f9df0, var(--accent)); }
+.osd .trk div::after { content: ""; position: absolute; right: -2px; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px rgba(143,184,255,0.8); }
+body.osd-vol .group, body.osd-bri .group { background: rgba(143,184,255,0.16); box-shadow: inset 0 0 0 1px rgba(143,184,255,0.3); }
+/* ---- live activity in the bar ---- */
+.mid { display: flex; align-items: center; gap: 8px; }
+.live { display: none; position: relative; align-items: center; gap: 9px; height: 34px; padding: 0 14px 0 12px; border-radius: 11px;
+  background: rgba(143,184,255,0.10); box-shadow: inset 0 0 0 1px rgba(143,184,255,0.22); font-size: 14px; overflow: hidden; }
+body.live-music .live, body.live-music-hover .live, body.live-video .live, body.live-video-hover .live, body.pip .live { display: flex; }
+.live i { font-style: normal; font-family: var(--mono); color: var(--accent); font-size: 15px; }
+.live b { font-weight: 600; }
+.live .by { color: var(--muted); }
+.live .by::before { content: "–"; margin-right: 8px; color: var(--dim); }
+.live .tm { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; margin-left: 4px; }
+.live .lp { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 1px; background: rgba(255,255,255,0.08); }
+.live .lp div { height: 100%; border-radius: 1px; background: var(--accent); }
+body.live-music-hover .live, body.live-video-hover .live { background: rgba(143,184,255,0.18); }
+
+/* expanded activity */
+body.live-music-hover .drop.act, body.live-video-hover .drop.act { display: block; }
+.act .body { top: 32px; padding: 22px 24px 20px; }
+.np2 { display: grid; grid-template-columns: 128px 1fr; gap: 20px; align-items: center; }
+.cover { width: 128px; height: 128px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  background: radial-gradient(circle at 28% 30%, rgba(255,255,255,0.85), transparent 22%), radial-gradient(circle at 70% 72%, #5b8def, transparent 55%), radial-gradient(circle at 80% 20%, #c9dcff, transparent 30%), linear-gradient(135deg, #1b2740, #0b0f18); }
+.np2 .t { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
+.np2 .a { font-size: 15px; color: var(--muted); margin-top: 3px; }
+.np2 .src { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.np2 .src i { font-style: normal; font-family: var(--mono); margin-right: 6px; }
+.seek { margin-top: 20px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.10); position: relative; }
+.seek div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.seek div::after { content: ""; position: absolute; right: -8px; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.45); }
+.times { display: flex; justify-content: space-between; margin-top: 9px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctl2 { display: flex; justify-content: center; align-items: center; gap: 30px; margin-top: 6px; }
+.ctl2 i { font-style: normal; font-family: var(--mono); font-size: 22px; color: var(--text); opacity: 0.85; }
+.ctl2 i.sm { font-size: 17px; opacity: 0.5; }
+.ctl2 .pp { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: #0b1424; display: grid; place-items: center; font-size: 20px; opacity: 1; }
+.vprev { position: relative; height: 243px; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.frame { position: absolute; inset: 0;
+  background: radial-gradient(circle at 72% 34%, rgba(255,244,220,0.95) 0 5%, rgba(255,220,170,0.35) 9%, transparent 24%),
+    linear-gradient(180deg, #2b3f66 0%, #6f86b4 45%, #c7b9b0 62%, #2a2f3c 63%, #151922 100%); }
+.frame::before { content: ""; position: absolute; left: 0; right: 0; bottom: 37%; height: 30%;
+  background: linear-gradient(180deg, #2b3446, #1a1f2b); clip-path: polygon(0 100%, 0 55%, 12% 30%, 22% 52%, 35% 18%, 48% 50%, 58% 34%, 70% 62%, 82% 26%, 92% 48%, 100% 40%, 100% 100%); }
+.pipbtn { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(5,8,14,0.35); }
+.pipbtn span { display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-radius: 14px; font-size: 14px; font-weight: 600;
+  background: rgba(10,12,16,0.65); border: 1px solid rgba(210,225,255,0.18); }
+.pipbtn i { font-style: normal; font-family: var(--mono); color: var(--accent); font-size: 17px; }
+.vt { margin-top: 16px; font-size: 17px; font-weight: 600; }
+.vs { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.vs i { font-style: normal; font-family: var(--mono); margin-right: 6px; }
+.npv { display: none; } .npm { display: block; }
+body.live-video-hover .npv { display: block; } body.live-video-hover .npm { display: none; }
+
+/* picture in picture */
+.pipwin { display: none; position: absolute; z-index: 4; right: 24px; bottom: 112px; width: 448px; height: 252px; border-radius: 20px; overflow: hidden;
+  border: 1px solid var(--glass-line); box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+body.pip .pipwin { display: block; }
+.pipwin .ov { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 16px 12px; background: linear-gradient(180deg, transparent, rgba(5,8,14,0.75)); }
+.pipwin .row2 { display: flex; align-items: center; gap: 14px; margin-top: 8px; font-size: 12.5px; color: #d9dfe8; font-variant-numeric: tabular-nums; }
+.pipwin .row2 i { font-style: normal; font-family: var(--mono); font-size: 16px; color: #fff; }
+.pipwin .row2 .r { margin-left: auto; display: flex; gap: 14px; }
+.pipwin .seek { margin-top: 0; height: 4px; }
+.pipwin .seek div::after { width: 12px; height: 12px; top: -4px; right: -6px; }
+.pipwin .top2 { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.pipwin .top2 i { font-style: normal; font-family: var(--mono); width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(10,12,16,0.55); color: #fff; font-size: 14px; }
+/* ---- restart countdown ---- */
+body.restart .dim { display: block; }
+.rst { display: none; position: absolute; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 520px; padding: 34px 36px 28px; border-radius: 30px; text-align: center;
+  border: 1px solid var(--glass-line); box-shadow: 0 40px 120px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.035); isolation: isolate; }
+body.restart .rst { display: block; }
+.rst .ic { width: 64px; height: 64px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: 28px; color: #0b1424; background: var(--accent); box-shadow: 0 0 40px rgba(143,184,255,0.4); }
+.rst .t { margin-top: 20px; font-size: 26px; font-weight: 700; letter-spacing: -0.4px; }
+.rst .t span { color: var(--accent); }
+.rst .m { margin-top: 6px; font-size: 14.5px; color: var(--muted); }
+.rst .drain { margin-top: 24px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.10); overflow: hidden; }
+.rst .drain div { height: 100%; width: 70%; border-radius: 4px; background: linear-gradient(90deg, #6f9df0, var(--accent)); }
+.rst .btns { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rst .btns div { padding: 13px 0; border-radius: 16px; font-size: 15px; font-weight: 600; background: rgba(255,255,255,0.06); border: 1px solid var(--glass-line); }
+.rst .btns div.go { background: var(--accent); color: #0b1424; border-color: transparent; }
+.rst .btns b { font-weight: 500; font-size: 12px; padding: 3px 7px; border-radius: 6px; margin-right: 8px; background: rgba(255,255,255,0.1); }
+.rst .btns .go b { background: rgba(11,20,36,0.15); }
+/* sixth desktop */
+.ws span.six { display: none; }
+body.ws6 .ws span.six { display: grid; }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<svg class="cursor" viewBox="0 0 22 30"><path d="M2 2 L2 24 L8 18.5 L12 28 L16 26.3 L12 17 L20 17 Z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>
+
+<div class="win a"><div class="tb"><span class="x"></span><span class="x"></span><b>Files</b></div><pre><span class="p">~/Documents</span>
+  Projects/
+  Notes.md
+  Screenshots/</pre></div>
+<div class="win b"><div class="tb"><span class="x"></span><span class="x"></span><b>Terminal</b></div><pre><span class="p">tux@tuxos</span> ~ $ tuxos-tune status
+  game mode      ready
+  scheduler      BORE
+  cpu packages   x86-64-v3
+  zram           lz4, 3.8 GiB</pre></div>
+
+<div class="win c" id="wc"><div class="tb"><span class="x"></span><span class="x"></span><b>Terminal</b></div><pre><span class="p">tux@tuxos</span> ~ $ tuxos-tune status
+  game mode      ready
+  scheduler      BORE
+  cpu packages   x86-64-v3
+  zram           lz4, 3.8 GiB
+<span class="p">tux@tuxos</span> ~ $ </pre></div>
+<div class="dim"></div>
+<div class="launcher" id="launcher">
+  <div class="search"><i>&#xf0349;</i><div class="q" id="q">Search apps, files and settings</div><span class="key">Super</span></div>
+  <div class="apps-view">
+    <div class="lsec">Apps</div>
+    <div class="lgrid">
+      <div class="lapp sel"><div class="app">&#xf059f;</div><span>Firefox</span></div>
+      <div class="lapp"><div class="app">&#xf024b;</div><span>Files</span></div>
+      <div class="lapp"><div class="app">&#xf018d;</div><span>Terminal</span></div>
+      <div class="lapp"><div class="app">&#xf0297;</div><span>Steam</span></div>
+      <div class="lapp"><div class="app">&#xf075a;</div><span>Spotify</span></div>
+      <div class="lapp"><div class="app">&#xf06a9;</div><span>Claude</span></div>
+      <div class="lapp"><div class="app">&#xf0b79;</div><span>Discord</span></div>
+      <div class="lapp"><div class="app">&#xf03eb;</div><span>Text Editor</span></div>
+      <div class="lapp"><div class="app">&#xf040a;</div><span>mpv</span></div>
+      <div class="lapp"><div class="app">&#xf02e9;</div><span>Image Viewer</span></div>
+      <div class="lapp"><div class="app">&#xf00ec;</div><span>Calculator</span></div>
+      <div class="lapp"><div class="app">&#xf0493;</div><span>TuxOS Control</span></div>
+    </div>
+  </div>
+  <div class="res">
+    <div class="lsec" style="margin-top:20px">Top result</div>
+    <div class="tophit"><div class="app">&#xf059f;</div><div><div class="n">Firefox</div><div class="m">Web browser</div></div><span class="go">Enter to open</span></div>
+    <div class="lsec">More</div>
+    <div class="row"><div class="app">&#xf059f;</div><div class="n">Firefox: new private window</div><div class="m">Action</div></div>
+    <div class="row"><div class="app">&#xf0498;</div><div class="n">Firewall</div><div class="m">TuxOS Control</div></div>
+    <div class="row"><div class="app">&#xf02e9;</div><div class="n">fireworks.png</div><div class="m">~/Pictures</div></div>
+  </div>
+  <div class="lfoot"><span><b>&#8593;&#8595;&#8592;&#8594;</b>move</span><span><b>Enter</b>open</span><span><b>Esc</b>close</span><span><b>=</b>calculate</span></div>
+</div>
+
+<div class="bar">
+  <div class="left">
+    <div class="logo"><img src="../../branding/out/pixmaps/tuxos-logo.png" alt=""></div>
+    <div class="ws"><div class="slider"></div><span class="used">1</span><span class="on">2</span><span class="used next">3</span><span>4</span><span>5</span><span class="six">6</span></div>
+  </div>
+  <div class="mid"><div class="clock">18:07<span>Sat 7 Nov</span></div>
+    <div class="live" id="live"><i id="liveic">&#xf075a;</i><b id="livet">Crank That</b><span class="by" id="liveby">Soulja Boy</span><span class="tm" id="livetm">3:51 / 4:21</span><div class="lp"><div id="livelp" style="width:88%"></div></div></div>
+  </div>
+  <div class="right">
+    <i>&#xf0297;</i>
+    <div class="group"><i>&#xf05a9;</i><i>&#xf057e;</i><i>&#xf0079;</i><span class="bat">86%</span></div>
+    <i class="pw">&#xf011;</i>
+  </div>
+</div>
+<div class="hint"><i>&#xf037d;</i>Scroll to switch desktops</div>
+
+<div class="dock">
+  <div class="app a-files run focus">&#xf024b;</div>
+  <div class="app a-web run">&#xf059f;</div>
+  <div class="app a-term run">&#xf018d;</div>
+  <div class="app a-game">&#xf0297;</div>
+  <div class="app a-music">&#xf075a;</div>
+  <div class="app a-edit">&#xf03eb;</div>
+  <div class="app a-set">&#xf0493;</div>
+  <div class="dsep"></div>
+  <div class="app a-trash">&#xf0a7a;</div>
+</div>
+
+<!-- clock droplet -->
+<div class="drop cal" id="cal">
+  <div class="fill"></div><svg></svg>
+  <div class="body">
+    <div class="bigtime">18<span class="c">:</span>07<span class="s"><span class="c2">:</span>42</span></div>
+    <div class="fulldate">Saturday, 7 November 2026</div>
+    <div class="month">November 2026<div class="nav"><span>&#xf053;</span><span>&#xf054;</span></div></div>
+    <div class="grid" id="grid"></div>
+    <div class="scrollhint"><i>&#xf037d;</i>Scroll to change month</div>
+  </div>
+</div>
+
+<div class="rst"><div class="ic">&#xf0453;</div>
+  <div class="t">Restarting in <span>7</span> s</div>
+  <div class="m">Unsaved work in open apps will be lost.</div>
+  <div class="drain"><div></div></div>
+  <div class="btns"><div><b>Esc</b>Cancel</div><div class="go"><b>Enter</b>Restart now</div></div>
+</div>
+
+<!-- expanded live activity -->
+<div class="drop act" id="act">
+  <div class="fill"></div><svg></svg>
+  <div class="body">
+    <div class="npm">
+      <div class="np2"><div class="cover"></div><div><div class="t">Crank That</div><div class="a">Soulja Boy</div><div class="src"><i>&#xf075a;</i>Spotify</div></div></div>
+      <div class="seek"><div style="width:88.5%"></div></div>
+      <div class="times"><span>3:51</span><span>-0:30</span></div>
+      <div class="ctl2"><i class="sm">&#xf049d;</i><i>&#xf04ae;</i><i class="pp">&#xf03e4;</i><i>&#xf04ad;</i><i class="sm">&#xf0456;</i></div>
+    </div>
+    <div class="npv">
+      <div class="vprev"><div class="frame"></div><div class="pipbtn"><span><i>&#xf03cc;</i>Pop out (picture in picture)</span></div></div>
+      <div class="vt">Linux from scratch, part 3</div><div class="vs"><i>&#xf059f;</i>YouTube · Firefox</div>
+      <div class="seek"><div style="width:47%"></div></div>
+      <div class="times"><span>12:08</span><span>-13:32</span></div>
+      <div class="ctl2"><i class="sm">&#xf03cc;</i><i>&#xf04ae;</i><i class="pp">&#xf03e4;</i><i>&#xf04ad;</i><i class="sm">&#xf057e;</i></div>
+    </div>
+  </div>
+</div>
+<div class="pipwin"><div class="frame"></div>
+  <div class="top2"><i>&#xf0e2;</i><i>&#xf00d;</i></div>
+  <div class="ov"><div class="seek"><div style="width:47%"></div></div>
+    <div class="row2"><i>&#xf03e4;</i><span>12:08 / 25:40</span><div class="r"><i>&#xf057e;</i><i>&#xf065;</i></div></div></div>
+</div>
+
+<!-- volume / brightness flyout -->
+<div class="drop osd" id="osd">
+  <div class="fill"></div><svg></svg>
+  <div class="body">
+    <div class="hd"><div class="ic" id="osdic">&#xf02cb;</div><div><div class="n" id="osdn">PRO X 2 LIGHTSPEED</div><div class="m" id="osdm">Headset · volume wheel</div></div><div class="pct" id="osdp">64%</div></div>
+    <div class="trk"><div id="osdt" style="width:64%"></div></div>
+  </div>
+</div>
+
+<!-- status droplet -->
+<div class="drop st" id="st">
+  <div class="fill"></div><svg></svg>
+  <div class="body">
+    <div class="batt"><div class="cell"><div></div></div><div><div class="pct">86%</div><div class="sub">4 h 12 min left · Balanced</div></div></div>
+    <div class="tiles">
+      <div class="tile"><div class="top"><i>&#xf05a9;</i><div class="tg"></div></div><div><div class="n">Wi-Fi</div><div class="m">Home-5G</div></div></div>
+      <div class="tile"><div class="top"><i>&#xf00af;</i><div class="tg"></div></div><div><div class="n">Bluetooth</div><div class="m">Headphones · 80%</div></div></div>
+    </div>
+    <div class="list">
+      <div class="li on"><i>&#xf05a9;</i>Home-5G<span class="r">Connected</span></div>
+      <div class="li"><i>&#xf0928;</i>Office<span class="r" style="font-family: var(--mono)">&#xf023;</span></div>
+      <div class="li"><i>&#xf0925;</i>Cafe Guest<span class="r"></span></div>
+    </div>
+    <div class="slid"><i>&#xf057e;</i><div class="tr"><div style="width:62%"></div></div></div>
+    <div class="slid"><i>&#xf00e0;</i><div class="tr"><div style="width:78%"></div></div></div>
+    <div class="prof"><span>Power saver</span><span class="on">Balanced</span><span>Performance</span></div>
+  </div>
+</div>
+
+<script>
+const state = (location.hash || '#plain').slice(1);
+document.body.classList.add(state);
+if (state === 'ws6') document.querySelectorAll('.ws span').forEach((e, i) => { if (i < 5) e.classList.add('used'); });
+if (state === 'lsearch') document.getElementById('q').innerHTML = '<b>fire</b>';
+
+// droplet outline: a rounded panel hanging from the bar by a liquid neck
+function droplet(el, cx, W, H, neck) {
+  // local coordinates; y = 0 is the bar's bottom edge
+  // hourglass neck: fillets into the bar (y = 0) and into the panel (y = top)
+  const r = 28, top = 32, n = neck / 2, nt = n + 22, flare = n + 30;
+  const d = [
+    `M ${cx - nt} -1`,
+    `C ${cx - n} -1, ${cx - n} ${top * 0.3}, ${cx - n} ${top * 0.5}`,
+    `C ${cx - n} ${top * 0.75}, ${cx - n - 12} ${top}, ${cx - flare} ${top}`,
+    `L ${r} ${top}`, `A ${r} ${r} 0 0 0 0 ${top + r}`,
+    `L 0 ${H - r}`, `A ${r} ${r} 0 0 0 ${r} ${H}`,
+    `L ${W - r} ${H}`, `A ${r} ${r} 0 0 0 ${W} ${H - r}`,
+    `L ${W} ${top + r}`, `A ${r} ${r} 0 0 0 ${W - r} ${top}`,
+    `L ${cx + flare} ${top}`,
+    `C ${cx + n + 12} ${top}, ${cx + n} ${top * 0.75}, ${cx + n} ${top * 0.5}`,
+    `C ${cx + n} ${top * 0.3}, ${cx + n} -1, ${cx + nt} -1`, 'Z'
+  ].join(' ');
+  el.style.width = W + 'px'; el.style.height = H + 'px';
+  el.querySelector('.fill').style.clipPath = `path('${d}')`;
+  el.querySelector('svg').innerHTML =
+    `<path d="${d}" fill="none" stroke="rgba(210,225,255,0.12)" stroke-width="1"/>`;
+}
+const barBottom = 56;
+const cal = document.getElementById('cal');
+cal.style.left = (960 - 220) + 'px'; cal.style.top = barBottom + 'px';
+droplet(cal, 220, 440, 566, 110);
+const st = document.getElementById('st');
+// the status group's centre is about x = 1789; the panel ends 12 px from the edge
+const stW = 400, stRight = 1908;
+st.style.left = (stRight - stW) + 'px'; st.style.top = barBottom + 'px';
+droplet(st, 1789 - (stRight - stW), stW, 598, 100);
+
+// minimize / maximize frames: the Terminal window flies into / out of its dock tile
+(function () {
+  const w = document.getElementById('wc'); if (!w || !/^(min|max)/.test(state)) return;
+  const t = document.querySelector('.a-term').getBoundingClientRect();
+  const W0 = 1000, H0 = 620, L0 = 460, T0 = 190;
+  const set = (l, t2, sx, sy, op) => { w.style.left = l + 'px'; w.style.top = t2 + 'px'; w.style.transform = `scale(${sx}, ${sy})`; w.style.opacity = op; };
+  if (state === 'min2') set(L0 + (t.left - L0) * 0.55, T0 + (t.top - T0) * 0.55, 0.42, 0.36, 0.85);
+  if (state === 'min3') { set(t.left + 6, t.top + 8, 0.046, 0.068, 0.6); document.querySelector('.a-term').classList.add('glow'); }
+  if (state === 'max2') { w.style.left = '180px'; w.style.top = '120px'; w.style.width = '1560px'; w.style.height = '820px'; }
+  if (state === 'max3') { w.style.left = '12px'; w.style.top = '66px'; w.style.width = '1896px'; w.style.height = '1002px'; }
+})();
+// live activity: video texts, and the expanded droplet under the chip
+(function () {
+  if (/video|pip/.test(state)) {
+    document.getElementById('liveic').innerHTML = '&#xf040a;';
+    document.getElementById('livet').textContent = 'Linux from scratch, part 3';
+    document.getElementById('liveby').textContent = 'YouTube';
+    document.getElementById('livetm').textContent = '12:08 / 25:40';
+    document.getElementById('livelp').style.width = '47%';
+  }
+  const c = document.getElementById('live').getBoundingClientRect();
+  if (!c.width) return;
+  const a = document.getElementById('act'); const video = /video/.test(state);
+  const aW = video ? 496 : 460, aH = video ? 470 : 318;
+  const cx = c.left + c.width / 2, left = Math.round(cx - aW / 2);
+  a.style.left = left + 'px'; a.style.top = barBottom + 'px';
+  droplet(a, cx - left, aW, aH, Math.min(120, c.width - 30));
+})();
+// flyout: same droplet, hanging from the status group
+(function () {
+  const o = document.getElementById('osd'); const oW = 360, oR = 1908;
+  o.style.left = (oR - oW) + 'px'; o.style.top = barBottom + 'px';
+  droplet(o, 1789 - (oR - oW), oW, 132, 100);
+  if (state === 'osd-bri') {
+    document.getElementById('osdic').innerHTML = '&#xf00e0;';
+    document.getElementById('osdn').textContent = 'Monitor';
+    document.getElementById('osdm').textContent = 'DP-1 · brightness over DDC/CI';
+    document.getElementById('osdp').textContent = '80%';
+    document.getElementById('osdt').style.width = '80%';
+  }
+})();
+function glass(el) {
+  const r = el.getBoundingClientRect();
+  const gb = document.createElement('div'); gb.className = 'gb';
+  const w = document.createElement('div'); w.style.left = -r.left + 'px'; w.style.top = -r.top + 'px';
+  gb.appendChild(w); el.prepend(gb);
+}
+document.querySelectorAll('.bar, .dock, .win, .hint, .launcher, .pipwin, .rst, .drop .fill').forEach(el => {
+  if (getComputedStyle(el.closest('.drop') || el).display !== 'none') glass(el);
+});
+// November 2026, weeks start on Monday
+const g = document.getElementById('grid');
+['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(x => g.insertAdjacentHTML('beforeend', `<div class="dow">${x}</div>`));
+const first = new Date(2026, 10, 1), lead = (first.getDay() + 6) % 7;
+const prevDays = new Date(2026, 10, 0).getDate();
+for (let i = lead; i > 0; i--) g.insertAdjacentHTML('beforeend', `<div class="d o">${prevDays - i + 1}</div>`);
+for (let d = 1; d <= 30; d++) {
+  const wd = (lead + d - 1) % 7;
+  g.insertAdjacentHTML('beforeend', `<div class="d${d === 7 ? ' today' : ''}${wd >= 5 && d !== 7 ? ' we' : ''}">${d}</div>`);
+}
+let tail = (7 - (lead + 30) % 7) % 7;
+for (let d = 1; d <= tail; d++) g.insertAdjacentHTML('beforeend', `<div class="d o">${d}</div>`);
+</script>
+</body>
+</html>

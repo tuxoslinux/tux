@@ -1,0 +1,49 @@
+#!/bin/bash
+# asroot: run a command as root through tools/root-helper (no password).
+#
+#   asroot CMD [ARG...]        runs CMD as root in the current folder; its
+#                              output streams here, its exit code is asroot's
+#   asroot --build [ARGS]      runs ../build.sh with every `sudo` in it
+#                              going through the helper
+#   asroot --check             exit 0 when the helper runs
+#
+# Piped input reaches the command when ASROOT_STDIN=1 (e.g.
+# `printf x | ASROOT_STDIN=1 asroot tee /etc/file`). Without the helper
+# running it fails with exit 125 and says how to start it.
+set -u
+here="$(cd "$(dirname "$0")" && pwd)"
+q=/run/user/$(id -u)/tuxos-root
+running() { [ -e "$q/helper.pid" ] && [ -d /proc/"$(cat "$q/helper.pid" 2>/dev/null)" ]; }
+
+case "${1:-}" in
+    --check) running; exit ;;
+    --build) shift; running || { echo "asroot: start the helper first: sudo $here/root-helper" >&2; exit 125; }
+             PATH="$here/sudo-shim:$PATH" exec "$here/../build.sh" "$@" ;;
+    "") sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac
+running || { echo "asroot: the root helper is not running; start it in your own terminal: sudo $here/root-helper" >&2; exit 125; }
+
+id="$q/$(date +%s%N)-$$"
+{
+    printf '# cmd: %s\n' "$*"
+    printf 'cd -- %q || exit 1\n' "$PWD"
+    printf 'export TERM=%q LANG=%q\n' "${TERM:-xterm}" "${LANG:-C.UTF-8}"
+    printf 'exec'; printf ' %q' "$@"; printf '\n'
+} > "$id.tmp"
+[ "${ASROOT_STDIN:-}" = 1 ] && cat > "$id.in"
+mv -f "$id.tmp" "$id.job"
+
+# stream the output until the exit code shows up
+while [ ! -e "$id.out" ] && [ ! -e "$id.rc" ]; do
+    running || { echo "asroot: the helper stopped" >&2; rm -f "$id".*; exit 125; }
+    sleep 0.1
+done
+tail -n +1 -F "$id.out" 2>/dev/null & tailpid=$!
+trap 'kill $tailpid 2>/dev/null; rm -f "$id".*' EXIT
+while [ ! -e "$id.rc" ]; do
+    running || { echo "asroot: the helper stopped" >&2; exit 125; }
+    sleep 0.1
+done
+sleep 0.3   # let tail print the last lines
+rc=$(cat "$id.rc")
+exit "${rc:-1}"

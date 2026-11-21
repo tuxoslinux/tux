@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS: battery charge limit and alarm wake-ups; the person at the PC
+     needs no password for these, remote sessions do -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.power">
+    <description>Change the battery charge limit or an alarm wake-up</description>
+    <description xml:lang="bg">Смяна на границата на зареждане или събуждане за аларма</description>
+    <message>TuxOS needs permission to change a power setting</message>
+    <message xml:lang="bg">TuxOS се нуждае от разрешение, за да смени настройка на захранването</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-power</annotate>
+  </action>
+</policyconfig>

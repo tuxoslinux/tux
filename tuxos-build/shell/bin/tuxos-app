@@ -1,0 +1,18 @@
+#!/bin/sh
+# tuxos-app NAME [--page ID] : starts one of TuxOS' own apps (Settings,
+# Calculator, Clock, System manager, Calendar), each its own small process
+# with its own app id; if it is already open it comes to the front.
+name="$1"; shift
+page=""
+[ "$1" = "--page" ] && page="$2"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/tuxos"
+[ -e "$cfg/app-$name.qml" ] || cfg=/etc/xdg/quickshell/tuxos
+file="$cfg/app-$name.qml"
+[ -e "$file" ] || { echo "tuxos-app: no app '$name'" >&2; exit 1; }
+# already running: bring it forward (and switch the page)
+if qs -p "$file" ipc show >/dev/null 2>&1; then
+    [ -n "$page" ] && qs -p "$file" ipc call "$name" page "$page" >/dev/null 2>&1
+    hyprctl dispatch "hl.dsp.focus({ window = \"class:tuxos-$name\" })" >/dev/null 2>&1
+    exit 0
+fi
+TUXOS_PAGE="$page" QS_APP_ID="tuxos-$name" exec qs -p "$file" >/dev/null 2>&1

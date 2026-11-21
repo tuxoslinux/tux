@@ -1,0 +1,9 @@
+# TuxOS login screen: greetd runs the TuxOS shell in greeter mode inside
+# cage (a small kiosk compositor that ends when the user logs in, so nothing
+# of the login screen stays in memory); see /usr/bin/tuxos-greeter.
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuxos-greeter"
+user = "greeter"

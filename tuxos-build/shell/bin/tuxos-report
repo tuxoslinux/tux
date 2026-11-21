@@ -1,0 +1,54 @@
+#!/bin/bash
+# tuxos-report: "Report a problem" (SPEC round 7 #14). Collects what helps
+# to find a problem: the shell's and Hyprland's logs, dinit services,
+# kernel warnings and errors, a hardware summary. The user's name, home
+# folder and the PC's name are replaced ("user", "~", "pc"). Nothing is
+# sent: Settings > About shows the report, and only after the user says so
+# copies it and opens a new GitHub issue on tuxoslinux/tux in the browser.
+#   tuxos-report            the report on stdout (Markdown)
+set -u
+me="${USER:-$(id -un)}"
+host="$(cat /etc/hostname 2>/dev/null || uname -n)"
+rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+section() { printf '\n### %s\n\n```\n' "$1"; }
+end() { printf '```\n'; }
+
+{
+printf '## System\n\n```\n'
+sed -n 's/^PRETTY_NAME=//p' /etc/os-release | tr -d '"'
+echo "kernel $(uname -r)"
+[ -r /etc/xdg/quickshell/tuxos/VERSION ] && echo "shell $(cat /etc/xdg/quickshell/tuxos/VERSION)"
+echo "session ${XDG_CURRENT_DESKTOP:-?} on ${XDG_SESSION_TYPE:-?}"
+pacman -Q hyprland quickshell mesa nvidia-utils linux-cachyos 2>/dev/null
+end
+
+section "Hardware"
+lscpu 2>/dev/null | grep -E '^(Model name|CPU\(s\)|Thread)' | sed 's/  */ /g'
+free -h 2>/dev/null | sed -n 2p | awk '{print "memory " $2 " (" $3 " used)"}'
+lspci -k 2>/dev/null | grep -A3 -E 'VGA|3D|Display' | grep -E 'VGA|3D|Display|driver in use'
+for c in /sys/class/drm/card*-*; do [ "$(cat "$c/status" 2>/dev/null)" = connected ] && echo "screen ${c##*/}: $(head -1 "$c/modes" 2>/dev/null)"; done
+ls /sys/class/power_supply 2>/dev/null | grep -q BAT && echo "laptop (battery)"
+end
+
+section "Services that failed (dinit)"
+failed=$(dinitctl list 2>/dev/null | grep -E '^\[[^]]*X[^]]*\]' | head -40)
+echo "${failed:-none failed}"
+end
+
+section "Kernel warnings and errors (this boot)"
+k=$(dmesg --level=err,warn 2>/dev/null | tail -40)
+echo "${k:-(none, or this PC lets only administrators read them)}"
+end
+
+section "TuxOS shell (last lines)"
+log=$(ls -t "$rt"/quickshell/by-id/*/log.qslog 2>/dev/null | head -1)
+if [ -n "$log" ]; then qs log "$log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'WARN|ERROR|crash|fail' | tail -40; fi
+tail -20 "$rt/tuxos-shell.log" 2>/dev/null
+end
+
+section "Hyprland (last errors)"
+hl=$(ls -t "$rt"/hypr/*/hyprland.log 2>/dev/null | head -1)
+[ -n "$hl" ] && grep -iE 'err|warn|fail' "$hl" | grep -v 'extensions' | tail -30
+end
+} | sed -e 's/\x1b\[[0-9;]*m//g' | cut -c1-300 | sed -e "s|$HOME|~|g" -e "s|/home/$me|~|g" -e "s/\\b$me\\b/user/g" -e "s/\\b$host\\b/pc/g"

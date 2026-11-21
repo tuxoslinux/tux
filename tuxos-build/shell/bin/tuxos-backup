@@ -1,0 +1,54 @@
+#!/bin/sh
+# tuxos-backup [--if-due] : copies the home folder to the backup place set
+# in TuxOS Backups (~/.config/tuxos/backups.json: dest, schedule, skip).
+# Every backup is a dated folder under DEST/TuxOS Backups/USER@HOST/;
+# files that did not change are hard links to the previous one, so each
+# backup costs only what changed. The newest 20 are kept.
+#   --if-due  only when the schedule says so (the shell asks every hour)
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/backups.json"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/tuxos/backup-state.json"
+mkdir -p "$(dirname "$state")"
+[ -f "$cfg" ] || { echo "no backup place set" >&2; exit 2; }
+dest=$(jq -r '.dest // empty' "$cfg"); schedule=$(jq -r '.schedule // "daily"' "$cfg")
+[ -n "$dest" ] || { echo "no backup place set" >&2; exit 2; }
+[ -d "$dest" ] && [ -w "$dest" ] || { echo "the backup place is not connected" >&2; exit 3; }
+last=$(jq -r '.last // 0' "$state" 2>/dev/null || echo 0)
+now=$(date +%s)
+if [ "$1" = --if-due ]; then
+    case "$schedule" in
+        daily) [ $((now - last)) -ge 86400 ] || exit 0 ;;
+        weekly) [ $((now - last)) -ge 604800 ] || exit 0 ;;
+        *) exit 0 ;;
+    esac
+fi
+root="$dest/TuxOS Backups/$(id -un)@$(cat /etc/hostname 2>/dev/null || hostname)"
+mkdir -p "$root" || exit 3
+new="$root/$(date '+%Y-%m-%d %H.%M')"
+prev=$(ls -1d "$root"/20* 2>/dev/null | grep -v '\.partial$' | tail -n1)
+excl=$(mktemp)
+printf '%s\n' .cache .local/share/Trash '.local/share/Steam/steamapps' '.var/app/*/cache' node_modules '*.partial' > "$excl"
+jq -r '.skip[]? // empty' "$cfg" >> "$excl"
+# a backup place inside the home folder is never copied into itself
+case "$dest" in "$HOME"/*) printf '/%s\n' "${dest#"$HOME"/}" >> "$excl" ;; esac
+jq -n --argjson t "$now" '{running: true, started: $t}' > "$state.run"
+errs=$(mktemp)
+rsync -a --delete --exclude-from="$excl" ${prev:+--link-dest="$prev"} "$HOME/" "$new.partial/" 2>"$errs"
+rc=$?
+rm -f "$excl" "$state.run"
+# 24: files vanished while copying; 23: some files could not be read (e.g.
+# root-only files in the home folder) - the backup is still good, and the
+# skipped files are listed
+if [ $rc -eq 0 ] || [ $rc -eq 24 ] || [ $rc -eq 23 ]; then
+    mv "$new.partial" "$new"
+    skipped=$(sed -n 's/.*failed to open "\(.*\)": .*/\1/p' "$errs" | jq -R . | jq -s .)
+    jq -n --argjson t "$now" --arg p "$new" --argjson s "${skipped:-[]}" '{last: $t, path: $p, ok: true, skipped: $s}' > "$state"
+    rm -f "$errs"
+    # keep the newest 20
+    ls -1d "$root"/20* 2>/dev/null | grep -v '\.partial$' | head -n -20 | while IFS= read -r old; do rm -rf -- "$old"; done
+    echo "$new"
+else
+    cat "$errs" >&2; rm -f "$errs"
+    rm -rf -- "$new.partial"
+    jq -n --argjson t "$last" --argjson rc "$rc" '{last: $t, ok: false, error: $rc}' > "$state"
+    exit 1
+fi

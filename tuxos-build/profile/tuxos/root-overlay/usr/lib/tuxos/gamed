@@ -14,6 +14,7 @@ GAME_MODE=yes
 GAME_SCHEDULER=none
 GAME_SCHEDULER_MODE=gaming
 GAME_POWER_PROFILE=performance
+GAME_PAUSE_DOWNLOADS=yes
 DESKTOP_POWER_PROFILE=performance
 # shellcheck source=/etc/tuxos/performance.conf
 [[ -r /etc/tuxos/performance.conf ]] && . /etc/tuxos/performance.conf
@@ -45,9 +46,48 @@ ppd_set_profile() { # profile
 old_profile=""
 scx_started=0
 
+# the running game's own profile (TuxOS Settings > Gaming > a game): the
+# owner of the game's process keeps ~/.config/tuxos/game-profiles/<id>.conf
+# with POWER= and SCHEDULER= ("default" = the settings above). Read with
+# grep, never sourced.
+game_profile() {
+    local pid id="" user="" home f v
+    # the player's own process (Steam's reaper), never one of root's
+    for pid in $(pgrep -f -- 'SteamLaunch AppId='); do
+        user=$(ps -o user= -p "${pid}" 2>/dev/null | tr -d ' ')
+        [[ -z "${user}" || "${user}" == root ]] && continue
+        id=$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null | sed -n 's/.*SteamLaunch AppId=\([0-9]\+\).*/\1/p')
+        [[ -n "${id}" ]] && break
+    done
+    [[ -n "${id}" && -n "${user}" ]] || return 0
+    home=$(getent passwd "${user}" | cut -d: -f6)
+    f="${home}/.config/tuxos/game-profiles/steam_${id}.conf"
+    [[ -r "${f}" && ! -L "${f}" ]] || return 0
+    v=$(sed -n 's/^POWER=\([a-z-]*\)$/\1/p' "${f}" | head -1)
+    case "${v}" in performance|balanced|power-saver) GAME_POWER_PROFILE="${v}" ;; esac
+    v=$(sed -n 's/^SCHEDULER=\([a-z_]*\)$/\1/p' "${f}" | head -1)
+    case "${v}" in none|scx_lavd|scx_bpfland|scx_rusty|scx_flash) GAME_SCHEDULER="${v}" ;; esac
+    log "profile of steam app ${id}: power ${GAME_POWER_PROFILE}, scheduler ${GAME_SCHEDULER}"
+}
+
 enter() {
     log "game started: game mode on"
     echo on > "${state}/mode"
+    # downloads pause while playing (system updates, the Store, Flatpak):
+    # only while they are downloading (pacman's partial files), never in the
+    # middle of installing; they go on when the game closes
+    paused_pids=""
+    if [[ "${GAME_PAUSE_DOWNLOADS}" == yes ]]; then
+        local p
+        if compgen -G '/var/cache/pacman/pkg/*.part' >/dev/null; then
+            for p in $(pgrep -x 'pacman|paru|yay'); do kill -STOP "${p}" 2>/dev/null && paused_pids+=" ${p}"; done
+        fi
+        for p in $(pgrep -x flatpak); do kill -STOP "${p}" 2>/dev/null && paused_pids+=" ${p}"; done
+        [[ -n "${paused_pids}" ]] && log "downloads paused:${paused_pids}"
+    fi
+    # per-game choices win for this game only (put back in leave)
+    saved_power="${GAME_POWER_PROFILE}" saved_sched="${GAME_SCHEDULER}"
+    game_profile
     if [[ "${GAME_SCHEDULER}" != none ]] && command -v scxctl >/dev/null; then
         # leave a scheduler someone started by hand alone
         if scxctl get 2>/dev/null | grep -qi 'no scx scheduler running'; then
@@ -83,7 +123,14 @@ leave() {
         fi
         old_profile=""
     fi
+    if [[ -n "${paused_pids:-}" ]]; then
+        local p
+        for p in ${paused_pids}; do kill -CONT "${p}" 2>/dev/null; done
+        log "downloads resumed"
+        paused_pids=""
+    fi
     echo off > "${state}/mode"
+    GAME_POWER_PROFILE="${saved_power:-${GAME_POWER_PROFILE}}" GAME_SCHEDULER="${saved_sched:-${GAME_SCHEDULER}}"
     log "game ended: game mode off"
 }
 

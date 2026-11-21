@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Weather
+Name[bg]=Времето
+Comment=Today, the next hours and the next 7 days
+Comment[bg]=Днес, следващите часове и следващите 7 дни
+Exec=tuxos-app weather
+Icon=weather-few-clouds
+Categories=Utility;
+Keywords=weather;forecast;temperature;rain;
+StartupWMClass=tuxos-weather

@@ -1,0 +1,7 @@
+# TuxOS text snippets (";mail" -> the address): tells the desktop shell when
+# one of its triggers was typed (see /usr/bin/tuxos-snippetd)
+type            = process
+command         = /usr/bin/tuxos-snippetd
+depends-on      = local.target
+smooth-recovery = true
+logfile         = /var/log/dinit/tuxos-snippetd.log

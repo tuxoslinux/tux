@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS: fan curves; the person at the PC
+     needs no password for these, remote sessions do -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.fan">
+    <description>Change how the fans run</description>
+    <description xml:lang="bg">Смяна на работата на вентилаторите</description>
+    <message>TuxOS needs permission to change how the fans run</message>
+    <message xml:lang="bg">TuxOS се нуждае от разрешение, за да смени работата на вентилаторите</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-fan</annotate>
+  </action>
+</policyconfig>

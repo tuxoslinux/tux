@@ -1,0 +1,6 @@
+# TuxOS: the battery charge limit chosen in TuxOS Control, again after boot
+type    = scripted
+command = /usr/bin/tuxos-power apply
+restart = false
+after   = udev-settle
+before  = local.target

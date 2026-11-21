@@ -5,6 +5,19 @@
 # Safe to run again; it only does what is missing.
 set -euo pipefail
 
+# Newer host kernels refuse the new mount API (fsopen ...) to a process
+# inside a chroot, and util-linux' mount / umount use it first ("must be
+# superuser to use mount", with root; leftover mounts then keep the live
+# layer busy); the classic mount(2) / umount2(2) still work. mount and
+# umount in /usr/local/bin (first in the build's PATH) run copies without
+# the setuid bit (libmount ignores the environment in setuid programs) with
+# LIBMOUNT_FORCE_MOUNT2=always. Refreshed every build (util-linux updates).
+for tool in mount umount; do
+    install -Dm755 "/usr/bin/${tool}" "/usr/local/lib/tuxos-buildiso/${tool}"
+    printf '#!/bin/sh\nLIBMOUNT_FORCE_MOUNT2=always exec /usr/local/lib/tuxos-buildiso/%s "$@"\n' "${tool}" > "/usr/local/bin/${tool}"
+    chmod 755 "/usr/local/bin/${tool}"
+done
+
 # CachyOS packaging key, used to verify the cachyos-keyring package itself
 cachyos_key=F3B607488DB35A47
 cachyos_repo=https://mirror.cachyos.org/repo/x86_64/cachyos

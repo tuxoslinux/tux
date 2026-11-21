@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TuxOS lock states</title>
+<!-- states via the URL hash: #wrong #unlock1 #unlock1b #unlock2 -->
+<style>
+:root {
+  --accent: #8fb8ff;
+  --text: #f4f7fb;
+  --muted: #8b95a5;
+  --line: rgba(200, 220, 255, 0.10);
+  --glass: rgba(10, 12, 16, 0.42);
+  --glass-line: rgba(210, 225, 255, 0.10);
+  --ui: "Adwaita Sans", "Noto Sans", sans-serif;
+  --mono: "JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--ui); color: var(--text); }
+
+.bg { position: absolute; inset: -80px; background: url("wallpaper.png") center / cover; filter: blur(36px) brightness(0.72); }
+.glow { position: absolute; inset: 0; background: radial-gradient(1100px 700px at 50% 30%, rgba(120, 165, 255, 0.07), transparent 70%); }
+.vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.5) 100%); }
+
+.glass {
+  background: var(--glass); border: 1px solid var(--glass-line);
+  box-shadow: 0 40px 120px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.035);
+  backdrop-filter: blur(40px);
+}
+
+/* motivational note, top of the right half (a new message every time the screen locks) */
+.note {
+  width: 340px; height: 220px; border-radius: 22px;
+  padding: 24px 26px; display: flex; flex-direction: column; justify-content: space-between;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+}
+.note .ic { width: 46px; height: 46px; border-radius: 14px; background: rgba(143,184,255,0.14); color: var(--accent); display: grid; place-items: center; font-family: var(--mono); font-size: 22px; }
+.note .t { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
+.note .s { font-size: 15px; color: var(--muted); margin-top: 8px; }
+
+.card {
+  position: absolute; left: 50%; top: 50%;
+  width: 1040px; height: 500px; transform: translate(-50%, -50%);
+  border-radius: 40px;
+  display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center;
+}
+.divider { height: 300px; background: var(--line); }
+
+.left { padding-left: 84px; align-self: start; padding-top: 70px; }
+.time { font-size: 96px; font-weight: 700; letter-spacing: -4px; line-height: 0.9; }
+.time span { color: var(--accent); }
+.date { margin-top: 14px; font-size: 18px; color: var(--muted); letter-spacing: 0.3px; }
+
+/* now playing */
+.np {
+  margin-top: 40px; width: 360px; padding: 14px; border-radius: 24px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+  display: grid; grid-template-columns: 76px 1fr; gap: 16px; align-items: center;
+}
+.art {
+  width: 76px; height: 76px; border-radius: 16px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), transparent 28%),
+    radial-gradient(circle at 70% 75%, #5b8def, transparent 55%),
+    linear-gradient(135deg, #1b2740, #0b0f18);
+}
+.song { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.artist { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+.bar { margin-top: 12px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); position: relative; }
+.bar::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 38%; border-radius: 2px; background: var(--accent); }
+.ctl { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 26px; padding-top: 4px; }
+.ctl i { font-style: normal; font-family: var(--mono); color: var(--text); font-size: 22px; opacity: 0.85; }
+.ctl .play { width: 42px; height: 42px; border-radius: 50%; background: var(--accent); color: #0b1424; display: grid; place-items: center; font-size: 16px; opacity: 1; }
+
+.right { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 70px 0 100px; }
+.pass {
+  width: 340px; height: 52px; border-radius: 26px;
+  background: rgba(0,0,0,0.30); border: 1px solid rgba(143,184,255,0.55);
+  display: flex; align-items: center; padding: 0 6px 0 22px;
+}
+.pass .dots { flex: 1; font-size: 20px; letter-spacing: 6px; }
+.pass .dots::after { content: ""; display: inline-block; width: 2px; height: 20px; background: var(--accent); vertical-align: -3px; margin-left: 4px; }
+.pass .go { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #0b1424; display: grid; place-items: center; font-family: var(--mono); font-size: 16px; }
+
+.corner { position: absolute; bottom: 26px; right: 30px; display: flex; gap: 6px; }
+.corner i { font-style: normal; font-family: var(--mono); font-size: 17px; color: var(--muted); width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; }
+/* wrong password: shake + red + "Try again" */
+.right { position: relative; }
+.passwrap { position: relative; }
+.ghost { position: absolute; inset: 0; border-radius: 26px; border: 1px solid rgba(255,122,138,0.35); display: none; }
+.err { position: absolute; left: 0; right: 0; top: 64px; text-align: center; font-size: 14px; color: #ff8a98; display: none; }
+.err i { font-style: normal; font-family: var(--mono); margin-right: 7px; }
+body.wrong .pass { transform: translateX(-14px); border-color: #ff7a8a; box-shadow: 0 0 0 5px rgba(255,122,138,0.10); }
+body.wrong .pass .go { background: #ff7a8a; }
+body.wrong .pass .dots { opacity: 0.5; }
+body.wrong .ghost { display: block; }
+body.wrong .ghost.g1 { transform: translateX(10px); opacity: 0.5; }
+body.wrong .ghost.g2 { transform: translateX(-34px); opacity: 0.25; }
+body.wrong .err { display: block; }
+/* right password: the bar becomes a lock that opens */
+.lockic { display: none; position: relative; width: 88px; height: 88px; border-radius: 50%; margin: 0 auto; place-items: center;
+  background: var(--accent); box-shadow: 0 0 0 8px rgba(143,184,255,0.14), 0 0 60px rgba(143,184,255,0.45); }
+.lockic svg { width: 50px; height: 50px; overflow: visible; }
+.lockic .shackle { transition: none; }
+.ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(143,184,255,0.7); display: none; }
+body.unlock1 .pass, body.unlock1b .pass, body.unlock2 .pass { display: none; }
+body.unlock1 .lockic, body.unlock1b .lockic, body.unlock2 .lockic { display: grid; }
+body.unlock1 .passwrap, body.unlock1b .passwrap, body.unlock2 .passwrap { width: 340px; height: 52px; display: grid; place-items: center; }
+body.unlock1b .shackle { transform: translate(0px, -5px); }
+body.unlock2 .shackle { transform: translate(0px, -6px) rotate(-32deg); transform-origin: 15px 15px; }
+body.unlock2 .ring { display: block; inset: -26px; opacity: 0.55; }
+body.unlock2 .ring.r2 { inset: -52px; opacity: 0.22; }
+body.unlock2 .card { transform: translate(-50%, -50%) scale(1.05); background: rgba(10,12,16,0.18); border-color: rgba(210,225,255,0.04); box-shadow: none; }
+body.unlock2 .left, body.unlock2 .note, body.unlock2 .divider, body.unlock2 .corner { opacity: 0.3; }
+body.unlock2 .bg { filter: blur(12px) brightness(0.9); }
+body.unlock2 .lockic { box-shadow: 0 0 0 14px rgba(143,184,255,0.10), 0 0 90px rgba(143,184,255,0.6); }
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="glow"></div><div class="vignette"></div>
+
+
+<div class="card glass">
+  <div class="left">
+    <div class="time">18<span>:</span>07</div>
+    <div class="date">Saturday, 7 November</div>
+    <div class="np">
+      <div class="art"></div>
+      <div>
+        <div class="song">Afterglow</div>
+        <div class="artist">Lumen Drift</div>
+        <div class="bar"></div>
+      </div>
+      <div class="ctl"><i>&#xf04ae;</i><i class="play">&#xf03e4;</i><i>&#xf04ad;</i></div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="right">
+    <div class="note">
+      <div class="ic">&#xf0e7;</div>
+      <div><div class="t">Lock in!<br>You got this.</div><div class="s">Welcome back, Tux</div></div>
+    </div>
+    <div class="passwrap">
+      <div class="ghost g1"></div><div class="ghost g2"></div>
+      <div class="pass"><span class="dots">••••••</span><span class="go">&#xf061;</span></div>
+      <div class="lockic"><div class="ring"></div><div class="ring r2"></div>
+        <svg viewBox="0 0 48 48"><g class="shackle"><path d="M15 23 V15 a9 9 0 0 1 18 0 V23" fill="none" stroke="#0b1424" stroke-width="4.5" stroke-linecap="round"/></g>
+        <rect x="9" y="21" width="30" height="22" rx="6.5" fill="#0b1424"/><circle cx="24" cy="30.5" r="3" fill="#8fb8ff"/><rect x="22.6" y="31" width="2.8" height="6" rx="1.4" fill="#8fb8ff"/></svg></div>
+      <div class="err"><i>&#xf071;</i>Try again</div>
+    </div>
+  </div>
+  <div class="corner"><i>&#xf0904;</i><i>&#xf021;</i><i>&#xf011;</i></div>
+</div>
+<script>
+const st = (location.hash || '#wrong').slice(1);
+document.body.classList.add(st);
+</script>
+</body>
+</html>

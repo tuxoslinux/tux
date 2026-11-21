@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+GenericName=TuxOS Control
+Comment=Every setting of TuxOS in one place
+Exec=tuxos-control
+Icon=preferences-system
+Categories=Settings;System;
+Keywords=settings;control;preferences;tuxos;
+StartupWMClass=tuxos-control

@@ -1,0 +1,92 @@
+#!/bin/sh
+# tuxos-session: the TuxOS desktop session (started by the login screen).
+# Hyprland with TuxOS' Lua config; a user's own ~/.config/hypr/hyprland.lua
+# wins once it exists (TuxOS copies the default there on first login).
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.lua"
+if [ ! -e "$cfg" ] && [ -e /usr/share/tuxos/hyprland.lua ]; then
+    mkdir -p "$(dirname "$cfg")"
+    cp /usr/share/tuxos/hyprland.lua "$cfg"
+fi
+mkdir -p "$HOME/.local/share/tuxos" "${XDG_RUNTIME_DIR:-/tmp}/tuxos-activities"
+# TuxOS' default apps (Helium, Files, ...) as the user's own defaults on the
+# first login: browsers and xdg-settings only look at mimeapps.list
+apps="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+if [ ! -e "$apps" ] && [ -e /etc/xdg/tuxos-mimeapps.list ]; then mkdir -p "$(dirname "$apps")"; cp /etc/xdg/tuxos-mimeapps.list "$apps"; fi
+[ -e "$HOME/.local/share/tuxos/wallpaper.png" ] || cp /usr/share/tuxos/wallpaper.png "$HOME/.local/share/tuxos/wallpaper.png" 2>/dev/null
+# the Game HUD: MangoHud for every Vulkan game, hidden until Super + Shift + G
+mkdir -p "$HOME/.config/MangoHud" "$HOME/.local/share/tuxos/gamelogs"
+if [ ! -e "$HOME/.config/MangoHud/MangoHud.conf" ] && [ -e /usr/share/tuxos/MangoHud.conf ]; then
+    sed "s|\$HOME|$HOME|" /usr/share/tuxos/MangoHud.conf > "$HOME/.config/MangoHud/MangoHud.conf"
+fi
+export MANGOHUD=1
+# screen sharing asks TuxOS' own picker (xdg-desktop-portal-hyprland)
+xdph="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/xdph.conf"
+if [ ! -e "$xdph" ]; then
+    mkdir -p "$(dirname "$xdph")"
+    printf 'screencopy {\n    custom_picker_binary = /usr/bin/tuxos-sharepicker\n    allow_token_by_default = false\n}\n' > "$xdph"
+fi
+# the live ISO: the shell skips lock / Welcome / session restore and
+# Hyprland opens the installer (customize-livefs.sh writes /etc/tuxos-live)
+[ -e /etc/tuxos-live ] && export TUXOS_LIVE=1
+# boot time: when the password was accepted (the shell adds the desktop's start)
+awk '{print $1}' /proc/uptime > "${XDG_RUNTIME_DIR:-/tmp}/tuxos-login-at"
+# the session bus (dinit's user dbus service listens on $XDG_RUNTIME_DIR/bus).
+# GLib and Qt find it without this, but programs using libdbus do not
+# (Chromium / Helium, Electron apps such as Spotify or Discord, VLC): they
+# then never show up as media players (the bar's live activity, media keys)
+# and miss notifications and portals
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+fi
+export XDG_CURRENT_DESKTOP=TuxOS:Hyprland
+export XDG_SESSION_DESKTOP=TuxOS
+export QT_QPA_PLATFORM="wayland;xcb"
+# Qt apps use TuxOS' palette (qt6ct, written by tuxos-theme); the cursor too
+export QT_QPA_PLATFORMTHEME=qt6ct
+export XCURSOR_THEME=TuxOS XCURSOR_SIZE=24
+export MOZ_ENABLE_WAYLAND=1
+# keep the console clean between the login screen and the desktop: the
+# compositor's output goes to a log, not to the screen
+log="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos-session.log"
+mkdir -p "$(dirname "$log")"; : > "$log"
+printf '\033[?25l\033[2J\033[H' 2>/dev/null
+# graphics whose driver loads but cannot draw (VirtualBox's VMSVGA without
+# 3D acceleration, some old GPUs): Mesa does not fall back by itself, so
+# Hyprland would stop at once. Then Mesa's software renderer (llvmpipe)
+# draws everything; the shell says so once per start.
+# (wlroots, so cage, refuses software rendering unless allowed)
+if command -v tuxos-glcheck >/dev/null && ! tuxos-glcheck >>"$log" 2>&1; then
+    echo "no GPU draws here: software rendering" >> "$log"
+    export GBM_ALWAYS_SOFTWARE=1 LIBGL_ALWAYS_SOFTWARE=1 WLR_RENDERER_ALLOW_SOFTWARE=1
+fi
+# safe mode (the login screen offers it after the desktop stopped right
+# away): TuxOS' own Hyprland settings, without the user's files
+safe=""
+[ "${TUXOS_SAFE:-}" = 1 ] && safe="-c /usr/share/tuxos/hyprland.lua"
+# the live ISO on graphics Hyprland cannot use (it needs OpenGL ES 3): when
+# it stops within 20 s, the installer opens on its own in cage (which can
+# draw without the GPU), with XFCE chosen on its Desktop page and a note
+if [ -n "${TUXOS_LIVE:-}" ]; then
+    start=$(date +%s)
+    if command -v start-hyprland >/dev/null; then start-hyprland -- >>"$log" 2>&1; else Hyprland >>"$log" 2>&1; fi
+    code=$?
+    # (start-hyprland says "exit cleanly", code 0, even after Hyprland
+    # crashed at once: the time decides)
+    if [ $(( $(date +%s) - start )) -lt 20 ] && command -v cage >/dev/null; then
+        echo "Hyprland stopped at once (code $code): installer in cage" >> "$log"
+        : > "${XDG_RUNTIME_DIR:-/tmp}/tuxos-no-hyprland"
+        export TUXOS_NO_HYPRLAND=1 XDG_CURRENT_DESKTOP=cage QT_QPA_PLATFORMTHEME=
+        # the GPU first; if cage cannot use it either, its software renderer
+        # (a cancelled installer also ends with an error: again the time decides)
+        cstart=$(date +%s)
+        if ! cage -s -- /usr/lib/tuxos/run-installer >>"$log" 2>&1 && [ $(( $(date +%s) - cstart )) -lt 10 ]; then
+            WLR_RENDERER=pixman cage -s -- /usr/lib/tuxos/run-installer >>"$log" 2>&1
+        fi
+    fi
+    exit "$code"
+fi
+# start-hyprland is Hyprland's own launcher (crash handling, safe mode)
+# shellcheck disable=SC2086
+if command -v start-hyprland >/dev/null; then exec start-hyprland -- $safe >>"$log" 2>&1; fi
+# shellcheck disable=SC2086
+exec Hyprland $safe >>"$log" 2>&1

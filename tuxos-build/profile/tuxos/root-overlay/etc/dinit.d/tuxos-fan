@@ -1,0 +1,7 @@
+# TuxOS: fan curves chosen in Settings > Performance (ends at once on PCs
+# whose fans TuxOS cannot control)
+type    = process
+command = /usr/bin/tuxos-fan run
+restart = false
+after   = udev-settle
+before  = local.target

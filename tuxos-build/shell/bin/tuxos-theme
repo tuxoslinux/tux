@@ -1,0 +1,135 @@
+#!/bin/sh
+# tuxos-theme [ACCENT] [dark|light] : makes GTK 3/4, Qt (qt6ct) and kitty
+# look like the TuxOS shell: near-black (or, in light mode, white frosted)
+# backgrounds, the accent colour (default #8fb8ff). The shell runs it at
+# login and whenever the accent or the light / dark mode changes. Only
+# writes the user's own files.
+accent="${1:-#8fb8ff}"
+mode="${2:-dark}"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+bg="#0c0e13"; bg2="#14171e"; bg3="#1b1f28"; fg="#f4f7fb"; muted="#8b95a5"; line="#262b36"; ink="#0b1424"
+mid1="#ff2c3240"; mid2="#ff222733"; dark="#ff07080b"; mid="#ff141820"; dis="#ff4c5463"
+gtk="adw-gtk3-dark"; icons="Papirus-Dark"; preferdark=1; scheme="prefer-dark"
+if [ "$mode" = light ]; then
+    bg="#f4f6fa"; bg2="#ffffff"; bg3="#e9edf3"; fg="#10141c"; muted="#5a6474"; line="#d3d9e3"
+    mid1="#ffffffff"; mid2="#fff0f3f8"; dark="#ffa0a8b5"; mid="#ffc8cfda"; dis="#ff9aa3b2"
+    gtk="adw-gtk3"; icons="Papirus"; preferdark=0; scheme="prefer-light"
+fi
+mkdir -p "$cfg/gtk-3.0" "$cfg/gtk-4.0" "$cfg/qt6ct/colors" "$cfg/kitty"
+
+# ---- GTK 3 (adw-gtk3-dark) and GTK 4 / libadwaita: colour overrides
+css="/* written by tuxos-theme: TuxOS colours */
+@define-color accent_color $accent;
+@define-color accent_bg_color $accent;
+@define-color accent_fg_color $ink;
+@define-color window_bg_color $bg;
+@define-color window_fg_color $fg;
+@define-color view_bg_color $bg2;
+@define-color view_fg_color $fg;
+@define-color headerbar_bg_color $bg;
+@define-color headerbar_fg_color $fg;
+@define-color headerbar_backdrop_color $bg;
+@define-color sidebar_bg_color $bg;
+@define-color sidebar_fg_color $fg;
+@define-color card_bg_color $bg2;
+@define-color card_fg_color $fg;
+@define-color popover_bg_color $bg3;
+@define-color popover_fg_color $fg;
+@define-color dialog_bg_color $bg2;
+@define-color dialog_fg_color $fg;
+@define-color borders $line;"
+printf '%s\n' "$css" > "$cfg/gtk-4.0/gtk.css"
+printf '%s\n' "$css" > "$cfg/gtk-3.0/gtk.css"
+for v in 3.0 4.0; do
+    cat > "$cfg/gtk-$v/settings.ini" <<INI
+[Settings]
+gtk-theme-name=$gtk
+gtk-icon-theme-name=$icons
+gtk-cursor-theme-name=TuxOS
+gtk-cursor-theme-size=24
+gtk-font-name=Adwaita Sans 11
+gtk-application-prefer-dark-theme=$preferdark
+INI
+done
+# GTK 4 apps read these through the portal / gsettings
+if command -v gsettings >/dev/null; then
+    gsettings set org.gnome.desktop.interface color-scheme $scheme 2>/dev/null
+    gsettings set org.gnome.desktop.interface gtk-theme $gtk 2>/dev/null
+    gsettings set org.gnome.desktop.interface icon-theme $icons 2>/dev/null
+    gsettings set org.gnome.desktop.interface cursor-theme TuxOS 2>/dev/null
+    gsettings set org.gnome.desktop.interface font-name "Adwaita Sans 11" 2>/dev/null
+fi
+
+# ---- Qt (qt6ct): Fusion with TuxOS' palette
+# order: WindowText Button Light Midlight Dark Mid Text BrightText ButtonText Base Window Shadow
+#        Highlight HighlightedText Link LinkVisited AlternateBase NoRole ToolTipBase ToolTipText PlaceholderText Accent
+a6=$(printf '%s' "$accent" | sed 's/#/#ff/')
+pal="#ff$(echo $fg|cut -c2-), #ff$(echo $bg3|cut -c2-), $mid1, $mid2, $dark, $mid, #ff$(echo $fg|cut -c2-), #ffffffff, #ff$(echo $fg|cut -c2-), #ff$(echo $bg2|cut -c2-), #ff$(echo $bg|cut -c2-), #ff000000, $a6, #ff$(echo $ink|cut -c2-), $a6, #ffb9a8ff, #ff$(echo $bg3|cut -c2-), #ff000000, #ff$(echo $bg3|cut -c2-), #ff$(echo $fg|cut -c2-), #ff$(echo $muted|cut -c2-), $a6"
+cat > "$cfg/qt6ct/colors/TuxOS.conf" <<QT
+[ColorScheme]
+active_colors=$pal
+inactive_colors=$pal
+disabled_colors=$dis, #ff$(echo $bg3|cut -c2-), $mid1, $mid2, $dark, $mid, $dis, $dis, $dis, #ff$(echo $bg2|cut -c2-), #ff$(echo $bg|cut -c2-), #ff000000, #ff2c3240, #ff8b95a5, $a6, #ffb9a8ff, #ff$(echo $bg3|cut -c2-), #ff000000, #ff$(echo $bg3|cut -c2-), #ff8b95a5, #ff4c5463, $a6
+QT
+cat > "$cfg/qt6ct/qt6ct.conf" <<QT
+[Appearance]
+color_scheme_path=$cfg/qt6ct/colors/TuxOS.conf
+custom_palette=true
+icon_theme=$icons
+standard_dialogs=default
+style=Fusion
+
+[Fonts]
+fixed="JetBrainsMono Nerd Font,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+general="Adwaita Sans,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+QT
+
+# ---- kitty: TuxOS colours, glass (Hyprland blurs behind it)
+if [ "$mode" = light ]; then
+    c0="#5a6474"; c8="#98a1af"; c1="#c62f45"; c9="#d6334a"; c2="#1f8a5b"; c10="#2a9d6b"; c3="#a86a00"; c11="#b97a10"
+    accent4="#3b6fd8"; c12="#4f80e0"; c5="#7a5ad6"; c13="#8a6ae0"; c6="#14809a"; c14="#1c90aa"; c7="#3a4250"; c15="#10141c"
+else
+    c0="#1b1f28"; c8="#4c5463"; c1="#ff7a8a"; c9="#ff9aa6"; c2="#8fe3c0"; c10="#aff0d4"; c3="#ffd08f"; c11="#ffdfae"
+    accent4="$accent"; c12="#b4cfff"; c5="#b9a8ff"; c13="#d0c4ff"; c6="#7fd6e8"; c14="#a8e6f2"; c7="#c9d1dc"; c15="#f4f7fb"
+fi
+cat > "$cfg/kitty/tuxos.conf" <<KT
+# written by tuxos-theme
+font_family JetBrainsMono Nerd Font
+font_size 11.5
+background $bg
+foreground $fg
+background_opacity $( [ "$mode" = light ] && echo 0.92 || echo 0.86 )
+cursor $accent
+cursor_text_color $ink
+selection_background $accent
+selection_foreground $ink
+url_color $accent
+active_border_color $accent
+inactive_border_color $line
+window_padding_width 12
+confirm_os_window_close 0
+# a command that ran over 30 s while you looked elsewhere: a notification
+notify_on_cmd_finish unfocused 30 notify
+enable_audio_bell no
+color0  $c0
+color8  $c8
+color1  $c1
+color9  $c9
+color2  $c2
+color10 $c10
+color3  $c3
+color11 $c11
+color4  $accent4
+color12 $c12
+color5  $c5
+color13 $c13
+color6  $c6
+color14 $c14
+color7  $c7
+color15 $c15
+KT
+if [ ! -e "$cfg/kitty/kitty.conf" ]; then echo "include tuxos.conf" > "$cfg/kitty/kitty.conf"
+elif ! grep -q "include tuxos.conf" "$cfg/kitty/kitty.conf"; then sed -i '1i include tuxos.conf' "$cfg/kitty/kitty.conf"; fi
+# running kitty windows pick the new colours up
+pkill -USR1 -x kitty 2>/dev/null
+exit 0

@@ -1,0 +1,56 @@
+#!/bin/bash
+# root-helper: type the sudo password once, then root commands of the build
+# and the tests run by themselves while this window stays open.
+#
+#   sudo ~/tuxos/tuxos-build/tools/root-helper      (in your own terminal)
+#
+# It runs as root and carries out the jobs that `tools/asroot CMD ...` (and
+# the `sudo` stand-in in tools/sudo-shim/, used by build.sh through
+# `tools/asroot --build`) leave in /run/user/<you>/tuxos-root/. Every command
+# is printed here before it runs. Ctrl+C stops it; it also stops by itself
+# after IDLE_HOURS (default 8) without a job.
+# While it runs, any program running as you can get root through it: only
+# keep it open while you want builds and tests to run unattended.
+set -u
+[ "$(id -u)" = 0 ] || { echo "start it with sudo: sudo $0" >&2; exit 1; }
+user=${SUDO_USER:-}
+[ -n "$user" ] && [ "$user" != root ] || { echo "start it with sudo from your own account" >&2; exit 1; }
+uid=$(id -u "$user") gid=$(id -g "$user")
+q=/run/user/$uid/tuxos-root
+idle_s=$(( ${IDLE_HOURS:-8} * 3600 ))
+
+if [ -e "$q/helper.pid" ] && kill -0 "$(cat "$q/helper.pid" 2>/dev/null)" 2>/dev/null; then
+    echo "root-helper already runs (pid $(cat "$q/helper.pid"))" >&2; exit 1
+fi
+rm -rf "$q"
+install -d -m 700 -o "$uid" -g "$gid" "$q"
+echo $$ > "$q/helper.pid"
+trap 'rm -f "$q/helper.pid"; echo; echo "root-helper stopped"; exit 0' INT TERM HUP
+echo "root-helper: running root jobs for $user (Ctrl+C stops, idle stop after ${IDLE_HOURS:-8} h)"
+
+last=$(date +%s)
+while :; do
+    for j in "$q"/*.job; do
+        [ -e "$j" ] || continue
+        id=${j%.job}
+        # only plain files the user made (no links to root files)
+        if [ -L "$j" ] || [ ! -f "$j" ] || [ "$(stat -c %u "$j")" != "$uid" ]; then rm -f "$j"; continue; fi
+        mv -f "$j" "$id.run" || continue
+        printf '[%s] %s\n' "$(date +%T)" "$(sed -n 's/^# cmd: //p' "$id.run")"
+        (
+            in=/dev/null; [ -f "$id.in" ] && [ ! -L "$id.in" ] && in="$id.in"
+            bash "$id.run" < "$in" > "$id.out" 2>&1
+            rc=$?
+            echo "$rc" > "$id.rc.tmp" && mv -f "$id.rc.tmp" "$id.rc"
+            [ "$rc" = 0 ] || printf '[%s]   exit %s\n' "$(date +%T)" "$rc"
+        ) &
+        last=$(date +%s)
+    done
+    # running jobs count as activity
+    if [ -n "$(jobs -rp)" ]; then last=$(date +%s); fi
+    if (( $(date +%s) - last > idle_s )); then
+        rm -f "$q/helper.pid"; echo "root-helper: no job for ${IDLE_HOURS:-8} h, stopped"; exit 0
+    fi
+    [ -d "$q" ] || { echo "root-helper: $q is gone, stopped"; exit 0; }
+    sleep 0.2
+done

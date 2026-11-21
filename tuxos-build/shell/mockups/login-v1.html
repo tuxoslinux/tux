@@ -1,0 +1,214 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TuxOS login v1</title>
+<style>
+:root {
+  --accent: #f5b800;
+  --accent-soft: rgba(245, 184, 0, 0.14);
+  --text: #f3efe6;
+  --muted: #9a927f;
+  --faint: #5e584b;
+  --tile: rgba(255, 244, 214, 0.045);
+  --tile-line: rgba(255, 236, 190, 0.07);
+  --card: rgba(16, 13, 8, 0.58);
+  --ui: "Adwaita Sans", "Noto Sans", sans-serif;
+  --mono: "JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--ui); color: var(--text); }
+
+/* blurred wallpaper */
+.bg {
+  position: absolute; inset: -80px;
+  background: url("../../branding/out/desktop/tuxos-wallpaper.jpg") center / cover;
+  filter: blur(70px) brightness(0.85) saturate(1.2);
+}
+.glow {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(900px 600px at 82% 78%, rgba(245, 184, 0, 0.16), transparent 70%),
+    radial-gradient(700px 500px at 12% 10%, rgba(255, 140, 0, 0.05), transparent 70%);
+}
+.vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%); }
+
+/* the card */
+.card {
+  position: absolute; left: 50%; top: 50%;
+  width: 1320px; height: 640px; transform: translate(-50%, -52%);
+  background: var(--card);
+  border: 1px solid rgba(245, 184, 0, 0.13);
+  border-radius: 36px;
+  box-shadow: 0 40px 120px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(40px);
+  display: grid; grid-template-columns: 380px 1fr 360px; gap: 16px; padding: 16px;
+}
+.tile {
+  background: var(--tile); border: 1px solid var(--tile-line);
+  border-radius: 24px; padding: 28px;
+}
+.col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+
+/* left: greeting + tuxfetch */
+.greet { font-size: 30px; font-weight: 300; letter-spacing: -0.3px; }
+.greet b { color: var(--accent); font-weight: 600; }
+.greet small { display: block; font-size: 15px; color: var(--muted); margin-top: 8px; font-weight: 400; letter-spacing: 0; }
+.fetch { flex: 1; display: flex; flex-direction: column; font-family: var(--mono); font-size: 14.5px; line-height: 1.5; }
+.prompt { color: var(--muted); margin-bottom: 18px; }
+.prompt .u { color: var(--accent); }
+.prompt .c { color: var(--text); }
+.fetchbody { display: flex; gap: 26px; align-items: center; flex: 1; padding-bottom: 20px; }
+pre.tux { font-family: var(--mono); font-size: 19px; line-height: 1.22; color: #d9d3c4; }
+pre.tux .y { color: var(--accent); }
+.info div { white-space: nowrap; }
+.info .k { color: var(--accent); display: inline-block; width: 70px; }
+.info { font-size: 15px; line-height: 1.75; }
+.info .v { color: var(--text); }
+.ok { color: #7fd17f; }
+.palette { display: flex; gap: 10px; margin-top: auto; }
+.last { margin-top: 16px; font-family: var(--ui); font-size: 13.5px; color: var(--faint); }
+.palette span { width: 22px; height: 22px; border-radius: 50%; display: block; border: 1px solid rgba(255,255,255,0.06); }
+
+/* center: clock, avatar, password */
+.center { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; position: relative; }
+.time { font-family: var(--ui); font-size: 132px; font-weight: 700; letter-spacing: -5px; line-height: 1; }
+.time .colon { color: var(--accent); margin: 0 2px; position: relative; top: -8px; }
+.date { margin-top: 14px; font-size: 19px; color: var(--muted); letter-spacing: 0.4px; }
+.date b { color: var(--text); font-weight: 500; }
+.avatar {
+  margin-top: 46px; width: 128px; height: 128px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #2a2416, #0e0c08);
+  box-shadow: 0 0 0 3px #0e0c08, 0 0 0 5px var(--accent), 0 0 40px rgba(245,184,0,0.25);
+  display: grid; place-items: center; overflow: hidden;
+}
+.avatar img { width: 86px; margin-top: 8px; }
+.name { margin-top: 18px; font-size: 22px; font-weight: 500; }
+.pass {
+  margin-top: 22px; width: 420px; height: 58px; border-radius: 29px;
+  background: rgba(0,0,0,0.38);
+  border: 1.5px solid rgba(245,184,0,0.55);
+  box-shadow: 0 0 0 5px rgba(245,184,0,0.08);
+  display: flex; align-items: center; padding: 0 7px 0 22px; gap: 14px;
+}
+.pass .ic { font-family: var(--mono); color: var(--accent); font-size: 18px; }
+.pass .dots { flex: 1; font-size: 22px; letter-spacing: 6px; color: var(--text); }
+.pass .dots::after { content: ""; display: inline-block; width: 2px; height: 22px; background: var(--accent); vertical-align: -3px; margin-left: 4px; }
+.pass .go { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #1a1405; display: grid; place-items: center; font-family: var(--mono); font-size: 18px; }
+.hints { margin-top: 18px; display: flex; gap: 10px; }
+.chip { font-size: 13.5px; color: var(--muted); padding: 7px 14px; border-radius: 16px; background: rgba(255,244,214,0.05); border: 1px solid var(--tile-line); }
+.chip i { font-style: normal; font-family: var(--mono); color: var(--accent); margin-right: 7px; }
+
+/* right: sessions + power */
+.label { font-size: 13px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--faint); margin-bottom: 18px; font-weight: 600; }
+.sessions { }
+.state { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 22px 28px; }
+.row { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+.row i { font-style: normal; font-family: var(--mono); width: 22px; color: var(--accent); }
+.row .r { margin-left: auto; color: var(--muted); font-size: 14px; }
+.row .r.ok { color: #7fd17f; }
+.sess { display: flex; align-items: center; gap: 16px; padding: 13px 16px; border-radius: 18px; margin-bottom: 6px; border: 1px solid transparent; }
+.sess .si { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-family: var(--mono); font-size: 22px; background: rgba(255,244,214,0.05); color: var(--muted); }
+.sess .t { font-size: 17px; font-weight: 500; }
+.sess .d { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.sess.on { background: var(--accent-soft); border-color: rgba(245,184,0,0.35); }
+.sess.on .si { background: var(--accent); color: #1a1405; }
+.sess .check { margin-left: auto; color: var(--accent); font-family: var(--mono); font-size: 18px; }
+.power { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 18px; }
+.pw { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 14px 0 12px; border-radius: 16px; background: rgba(255,244,214,0.04); }
+.pw i { font-style: normal; font-family: var(--mono); font-size: 24px; color: var(--text); }
+.pw span { font-size: 12px; color: var(--muted); }
+.pw.off i { color: #ff8a65; }
+
+/* bottom status line */
+.status {
+  position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%);
+  display: flex; gap: 28px; font-size: 14px; color: var(--muted);
+}
+.status i { font-style: normal; font-family: var(--mono); color: var(--accent); margin-right: 8px; }
+.brand { position: absolute; left: 64px; bottom: 54px; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.brand span { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="glow"></div><div class="vignette"></div>
+
+<div class="card">
+  <div class="col">
+    <div class="tile">
+      <div class="greet">Good evening, <b>Tux</b><small>Welcome back to TuxOS</small></div>
+    </div>
+    <div class="tile fetch">
+      <div class="prompt"><span class="u">tester@tuxos</span>:~$ <span class="c">tuxfetch</span></div>
+      <div class="fetchbody">
+<pre class="tux">    .--.
+   |o_o |
+   |:<span class="y">_/</span> |
+  //   \ \
+ (|     | )
+<span class="y">/'\_   _/`\</span>
+<span class="y">\___)=(___/</span></pre>
+        <div class="info">
+          <div><span class="k">OS</span><span class="v">TuxOS</span></div>
+          <div><span class="k">KERNEL</span><span class="v">7.3.1-cachyos</span></div>
+          <div><span class="k">INIT</span><span class="v">dinit</span></div>
+          <div><span class="k">WM</span><span class="v">Hyprland</span></div>
+          <div><span class="k">CPU</span><span class="v">x86-64-v3</span></div>
+          <div><span class="k">UPTIME</span><span class="v">0 min</span></div>
+        </div>
+      </div>
+      <div class="palette">
+        <span style="background:#000"></span>
+        <span style="background:#f5b800"></span>
+        <span style="background:#f3efe6"></span>
+        <span style="background:#ffd75e"></span>
+        <span style="background:#7fd17f"></span>
+        <span style="background:#ff8a65"></span>
+        <span style="background:#3b3428"></span>
+      </div>
+      <div class="last">Last login yesterday, 23:41 · TuxOS desktop</div>
+    </div>
+  </div>
+
+  <div class="tile center">
+    <div class="time">18<span class="colon">:</span>07</div>
+    <div class="date"><b>Friday</b> · 7 November 2026</div>
+    <div class="avatar"><img src="../../branding/out/pixmaps/tuxos-logo.png" alt=""></div>
+    <div class="name">Tux Tester</div>
+    <div class="pass"><span class="ic">&#xf023;</span><span class="dots">••••••</span><span class="go">&#xf061;</span></div>
+    <div class="hints">
+      <span class="chip"><i>&#xf030c;</i>US</span>
+      <span class="chip"><i>&#xf0379;</i>TuxOS desktop</span>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="tile sessions">
+      <div class="label">Session</div>
+      <div class="sess on"><div class="si">&#xf0379;</div><div><div class="t">TuxOS desktop</div><div class="d">Hyprland + TuxOS shell</div></div><div class="check">&#xf00c;</div></div>
+      <div class="sess"><div class="si">&#xf0297;</div><div><div class="t">Game Mode</div><div class="d">Steam Big Picture</div></div></div>
+      <div class="sess"><div class="si">&#xf120;</div><div><div class="t">Console</div><div class="d">Text login</div></div></div>
+    </div>
+    <div class="tile state">
+      <div class="row"><i>&#xf0297;</i>Game mode<span class="r ok">● ready</span></div>
+      <div class="row"><i>&#xf0e7;</i>Power profile<span class="r">Performance</span></div>
+      <div class="row"><i>&#xf0ed;</i>Updates<span class="r">Up to date</span></div>
+    </div>
+    <div class="tile power">
+      <div class="pw"><i>&#xf0904;</i><span>Sleep</span></div>
+      <div class="pw"><i>&#xf021;</i><span>Restart</span></div>
+      <div class="pw off"><i>&#xf011;</i><span>Shut down</span></div>
+      <div class="pw"><i>&#xf0c9;</i><span>Boot menu</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="brand">Tux<span>OS</span></div>
+<div class="status">
+  <span><i>&#xf05a9;</i>Connected</span>
+  <span><i>&#xf0079;</i>100%</span>
+  <span><i>&#xf0ad;</i>Accessibility</span>
+</div>
+</body>
+</html>

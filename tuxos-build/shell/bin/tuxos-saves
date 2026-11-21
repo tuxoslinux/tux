@@ -1,0 +1,43 @@
+#!/bin/sh
+# tuxos-saves: game save backups with Ludusavi (SPEC round 6 #3): saves of
+# Steam, Heroic, Lutris and emulator games, before each game update and once
+# a day, into the Backups app's place ("Game saves" there) when it is set up
+# and connected, else ~/Games/Saves.
+#   tuxos-saves backup [GAME]    all games, or one (its name as Steam shows it)
+#   tuxos-saves restore GAME     put that game's newest backup back
+#   tuxos-saves list             games with a backup, one per line
+#   tuxos-saves where            the backup folder
+#   tuxos-saves have             exit 0 when Ludusavi is installed
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/backups.json"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/tuxos"
+ludusavi() {
+    if command -v ludusavi >/dev/null; then command ludusavi "$@"
+    else flatpak run --command=ludusavi com.github.mtkennerly.ludusavi "$@"; fi
+}
+have() { command -v ludusavi >/dev/null || flatpak info com.github.mtkennerly.ludusavi >/dev/null 2>&1; }
+where() {
+    dest=$(jq -r '.dest // empty' "$cfg" 2>/dev/null)
+    if [ -n "$dest" ] && [ -d "$dest" ] && [ -w "$dest" ]; then echo "$dest/TuxOS Backups/Game saves"; else echo "$HOME/Games/Saves"; fi
+}
+case "$1" in
+    have) have ;;
+    where) where ;;
+    backup)
+        have || { echo "tuxos-saves: Ludusavi is not installed" >&2; exit 3; }
+        d=$(where); mkdir -p "$d" "$state"
+        shift
+        if [ $# -gt 0 ]; then nice -n 10 ludusavi backup --force --path "$d" "$*" >/dev/null 2>&1
+        else nice -n 10 ludusavi backup --force --path "$d" >/dev/null 2>&1; fi
+        rc=$?
+        [ $rc -eq 0 ] && date +%s > "$state/saves-last"
+        exit $rc ;;
+    restore)
+        have || exit 3
+        shift
+        [ $# -gt 0 ] || exit 2
+        ludusavi restore --force --path "$(where)" "$*" ;;
+    list)
+        have || exit 0
+        ludusavi backups --path "$(where)" --api 2>/dev/null | jq -r '.games | keys[]' 2>/dev/null ;;
+    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

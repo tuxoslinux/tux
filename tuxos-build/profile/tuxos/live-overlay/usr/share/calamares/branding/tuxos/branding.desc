@@ -5,11 +5,11 @@ componentName:  tuxos
 welcomeStyleCalamares:   false
 welcomeExpandingLogo:   true
 
-# Full screen on the COSMIC live desktop: COSMIC opens a Calamares window
-# at its minimum size (1024x520), where the sidebar scrolls and hides
-# "Install" and "Finish". windowSize is the size when leaving full screen.
-windowExpanding:    fullscreen
-windowSize: 1024px,640px
+# A normal window on the TuxOS live desktop: Hyprland maximizes it under
+# the bar (window rule "tuxos-installer"), so Wi-Fi can still be set up
+# from the bar while installing. windowSize is the size if it is restored.
+windowExpanding:    normal
+windowSize: 1024px,700px
 windowPlacement: free
 
 sidebar: widget

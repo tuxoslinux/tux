@@ -1,19 +1,21 @@
 # TuxOS installer build
 
-Builds `tuxos-<date>-x86_64.iso`: a live ISO (under 2 GB) that boots into a
-COSMIC live desktop (stock look, since build9), where the TuxOS-branded
-Calamares installer opens by itself, full screen ("Install TuxOS" in the
-dock reopens it). It installs the build2 system (TuxOS with NetworkManager,
-dinit) plus the desktop picked on the installer's "Desktop" page: KDE
-Plasma, COSMIC, Hyprland, Cinnamon, Budgie, MATE, LXQt, Labwc, XFCE, i3 or
-none. COSMIC and MATE come from Artix itself. Pantheon was tried for build9
-and left out: Artix' gnome-session cannot start it without systemd, and
-Arch's Pantheon 8 packages are broken (applications menu built for the old
-panel, power indicator crashes the panel). Lingmo UI has no working Arch
-packages. It is an online installer: the desktop and the
-drivers are downloaded during the installation, so the installer requires
-an internet connection (an empty file `profile/tuxos/offline-repo` brings
-back the 1.1 GB offline repository).
+Builds `tuxos-<date>-x86_64.iso`: a live ISO (under 2 GB) that boots into
+the TuxOS desktop (since build11; COSMIC in build9-10), where the
+TuxOS-branded Calamares installer opens by itself, maximized under the bar
+("Install TuxOS" in the launcher reopens it). It installs the build2 system
+(TuxOS with NetworkManager, dinit) plus the desktop picked on the
+installer's "Desktop" page: the TuxOS desktop (first and default: Hyprland
+with TuxOS' own Quickshell shell and apps, from `shell/`), KDE Plasma,
+COSMIC, Hyprland, Cinnamon, Budgie, MATE, LXQt, Labwc, XFCE, i3 or none.
+COSMIC and MATE come from Artix itself. Pantheon was tried for build9 and
+left out: Artix' gnome-session cannot start it without systemd, and Arch's
+Pantheon 8 packages are broken (applications menu built for the old panel,
+power indicator crashes the panel). Lingmo UI has no working Arch packages.
+It is an online installer: the desktop and the drivers are downloaded
+during the installation, so the installer requires an internet connection
+(an empty file `profile/tuxos/offline-repo` brings back the 1.1 GB offline
+repository).
 
 The installed system runs the CachyOS kernel (`linux-cachyos`), has the
 Artix `system`/`world`/`galaxy`/`lib32` repositories plus Arch `extra` and
@@ -86,6 +88,13 @@ CHROOT_DIR=DIR OUT_DIR=DIR ./build.sh  # another chroot / output folder
 tools/list-packages ISO > packages.txt # every package on an ISO, with versions
 ```
 
+`build.sh` asks for the sudo password several times. To type it once:
+start `sudo tools/root-helper` in your own terminal and leave it open; then
+`tools/asroot --build` runs `build.sh` with every `sudo` going through it
+(and `tools/asroot CMD` runs one command as root). While it runs, any
+program of yours can get root through it: close it (Ctrl+C) when done; it
+also stops after 8 hours without a job.
+
 Every build gets a new folder `../out/build<N>` (the next number; nothing is
 ever overwritten) with the ISO and its `.sha256`, and a row in
 `../out/BUILDS.md`; record test results with
@@ -100,25 +109,39 @@ ever overwritten) with the ISO and its `.sha256`, and a row in
 | `profile/tuxos/root-overlay/usr/bin/tuxos-drivers` | Hardware detection and driver install (NVIDIA: driver series from `usr/share/tuxos/drivers/*.ids`, refreshed by `tools/update-nvidia-ids`; AMD/Intel Vulkan and video; Broadcom Wi-Fi; VM guest tools) |
 | `profile/tuxos/live-overlay/usr/share/tuxos/desktop/` | Per-desktop package lists (`packages/*.list`, downloaded by the installer) and TuxOS defaults (`<desktop>/root`, `<desktop>/skel`, `common/` incl. the SDDM theme) |
 | `profile/tuxos/live-overlay/usr/lib/tuxos/install-desktop` | Run by the installer: pacman keyring, desktop packages (downloaded, with a full upgrade), login screen, per-desktop setup |
-| `test/` | Headless QEMU tests: `install-test.sh uefi|bios ISO`, `desktop-test.sh <desktop> ISO` (3D GPU, logs in and checks the session), `drivers-test.sh` (driver choices for 15 simulated machines). The installer fills the live desktop between COSMIC's panel and dock: `calamares.py` finds it in a screenshot and maps the tests' clicks onto it. `desktop-test.sh` with `SKIP_INSTALL=1` boots and checks the disk of an earlier run. The install test ends with an audit of the installed system (dinit services, kernel errors, pacman database and files, broken links, installer log) written to `run/<fw>-serial.log`. QEMU/KVM tests crash if a VirtualBox VM runs at the same time |
+| `test/` | Headless QEMU tests: `install-test.sh uefi|bios ISO`, `desktop-test.sh <desktop> ISO` (3D GPU, logs in and checks the session), `drivers-test.sh` (driver choices for 15 simulated machines). The installer is a window of the live desktop: `calamares.py` finds it in a screenshot and maps the tests' clicks onto it. `desktop-test.sh` with `SKIP_INSTALL=1` boots and checks the disk of an earlier run. The install test ends with an audit of the installed system (dinit services, kernel errors, pacman database and files, broken links, installer log) written to `run/<fw>-serial.log`. QEMU/KVM tests crash if a VirtualBox VM runs at the same time |
 
 How the live ISO reaches the installer: GRUB boots "Install TuxOS" after
-5 seconds (`quiet`, no boot animation) → SDDM logs the live
-user `tuxos` (password `tuxos`) into COSMIC (Wayland) → the autostart entry
-runs `/usr/lib/tuxos/run-installer`, which writes the Drivers page for this
-computer and starts Calamares as root, full screen (through XWayland;
-COSMIC opens a Calamares window only at its 1024x520 minimum size, where
-the sidebar scrolls). The live session never turns the screen off or
-suspends (`live-overlay/etc/skel/.config/cosmic/com.system76.CosmicIdle`,
-`etc/elogind/logind.conf.d`). Only COSMIC's default wallpaper is kept on the
-ISO, and the live ISO does not switch on swap partitions it finds
+5 seconds (`quiet`, no boot animation) → greetd logs the live user `tuxos`
+(password `tuxos`) into the TuxOS desktop once (`initial_session`,
+`customize-livefs.sh`; after a logout the TuxOS login screen shows) →
+`tuxos-session` sees `/etc/tuxos-live` and Hyprland runs
+`/usr/lib/tuxos/run-installer`, which writes the Drivers page for this
+computer, waits until the shell's bar has reserved its space and starts
+Calamares as root, maximized under the bar. On graphics Hyprland cannot use
+(it stops within 20 s), `tuxos-session` opens the installer in cage instead
+and its Desktop page picks XFCE (`installer-no-hyprland`); a GPU driver that
+loads but cannot draw (VirtualBox without 3D) gets software drawing
+(`tuxos-glcheck`). The live session never locks, turns the screen off or
+suspends (`etc/elogind/logind.conf.d`, the shell skips lock and Welcome
+live), and the live ISO does not switch on swap partitions it finds
 (artix-live does): the installer would treat that disk as in use and hide
 "Erase disk". Dual boot: the installer offers "Install alongside" when it
 finds another system, and the installed GRUB lists it through os-prober,
-which needs `fuse3` (for `grub-mount`) on the installed system. The live initramfs leaves
-out nouveau and NVIDIA's firmware (`live-overlay/etc/initcpio/install/
-tuxos_no_nouveau`): they load from the live system, which keeps the ISO
-small.
+which needs `fuse3` (for `grub-mount`) on the installed system. The live
+initramfs leaves out nouveau and NVIDIA's firmware
+(`live-overlay/etc/initcpio/install/tuxos_no_nouveau`): they load from the
+live system, which keeps the ISO small.
+
+Disk encryption (the installer's "Encrypt system"): LUKS2 with PBKDF2 key
+slots (GRUB opens only those; the installer's `tuxoscrypt` module converts
+them) and a recovery key the Welcome app shows once. Settings > Privacy &
+security turns on Secure Boot (`tuxos-secureboot`: shim + GRUB and kernels
+signed with the PC's own key, enrolled once in MokManager) and then TPM
+unlock (`tuxos-tpm`: GRUB opens the disk with a key sealed in the TPM to
+PCRs 0, 2 and 7; the password stays as the fallback and is asked once after
+a firmware or hardware change, then the key is sealed again at boot; the
+boot menu cannot be edited while it is on).
 
 Test VMs create the account `tester` / `tuxtest123` (root has the same
 password) on a throwaway disk.

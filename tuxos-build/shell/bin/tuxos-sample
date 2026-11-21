@@ -1,0 +1,31 @@
+#!/bin/sh
+# tuxos-sample: raw system counters once a second for TuxOS' System
+# manager (it computes the rates). Runs only while the app is open.
+#   T <ns> · cpu lines of /proc/stat · M <meminfo key> <kB> · D <disk> <read sectors> <written sectors>
+#   N <iface> <rx bytes> <tx bytes> · F <avg MHz> · C <cpu °C> · G <gpu fields> · END
+gpu_nv=$(command -v nvidia-smi)
+while :; do
+    echo "T $(date +%s%N)"
+    grep '^cpu' /proc/stat
+    awk '/^(MemTotal|MemAvailable|Cached|Buffers|SwapTotal|SwapFree|Shmem):/ {sub(":","",$1); print "M", $1, $2}' /proc/meminfo
+    awk '$3 ~ /^(nvme[0-9]+n[0-9]+|sd[a-z]+|mmcblk[0-9]+|vd[a-z]+|zram[0-9]+)$/ {print "D", $3, $6, $10}' /proc/diskstats
+    awk 'NR>2 {sub(":","",$1); if ($1 != "lo") print "N", $1, $2, $10}' /proc/net/dev
+    cat /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq 2>/dev/null | awk '{s+=$1; n++} END {if (n) printf "F %d\n", s/n/1000}'
+    for h in /sys/class/hwmon/hwmon*; do
+        case "$(cat "$h/name" 2>/dev/null)" in
+            k10temp|coretemp|zenpower|cpu_thermal) t=$(cat "$h/temp1_input" 2>/dev/null) && echo "C $((t / 1000))" && break ;;
+        esac
+    done
+    if [ -n "$gpu_nv" ]; then
+        nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,clocks.gr,fan.speed,power.draw --format=csv,noheader,nounits 2>/dev/null | head -1 | sed 's/^/G nv,/; s/ //g'
+    else
+        for c in /sys/class/drm/card[0-9]/device; do
+            [ -e "$c/gpu_busy_percent" ] || continue
+            h=$(ls -d "$c"/hwmon/hwmon* 2>/dev/null | head -1)
+            echo "G amd,$(cat "$c/gpu_busy_percent"),$(( $(cat "$c/mem_info_vram_used" 2>/dev/null || echo 0) / 1048576 )),$(( $(cat "$c/mem_info_vram_total" 2>/dev/null || echo 0) / 1048576 )),$(( $(cat "$h/temp1_input" 2>/dev/null || echo 0) / 1000 )),$(( $(cat "$h/freq1_input" 2>/dev/null || echo 0) / 1000000 )),$(cat "$h/fan1_input" 2>/dev/null || echo -),$(( $(cat "$h/power1_average" 2>/dev/null || cat "$h/power1_input" 2>/dev/null || echo 0) / 1000000 ))"
+            break
+        done
+    fi
+    echo END
+    sleep "${1:-1}"
+done

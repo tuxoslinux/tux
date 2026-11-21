@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Run as a Windows app
+Name[bg]=Пусни като програма за Windows
+Comment=Runs Windows programs with Proton, each in its own Windows folder
+Comment[bg]=Пуска програми за Windows с Proton, всяка в своя папка на Windows
+Exec=tuxos-winapp open %f
+Icon=wine
+NoDisplay=true
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-msi;application/x-ms-installer;application/x-ole-storage;

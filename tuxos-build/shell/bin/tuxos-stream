@@ -1,0 +1,64 @@
+#!/bin/sh
+# tuxos-stream: game streaming host (SPEC round 7 #1): Sunshine, so Moonlight
+# on a phone, TV or laptop can play this PC's games.
+#   tuxos-stream on | off | status     start / stop (remembered for the next login)
+#   tuxos-stream restore               at login: on again if it was on
+#   tuxos-stream pin PIN [NAME]        pair a Moonlight device with the PIN it shows
+#   tuxos-stream pending               how many devices wait to be paired
+#   tuxos-stream clients               paired devices, one per line
+# Sunshine's web admin gets a generated login (~/.config/tuxos/sunshine.login),
+# so pairing works from TuxOS Settings without its web page.
+run="${XDG_RUNTIME_DIR:-/tmp}"
+pidf="$run/tuxos-sunshine.pid"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+login="$cfg/tuxos/sunshine.login"
+flag="$cfg/tuxos/streaming"
+api="https://localhost:47990/api"
+
+running() { [ -s "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; }
+creds() {
+    if [ ! -s "$login" ]; then
+        mkdir -p "$cfg/tuxos"
+        pass=$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | cut -c1-20)
+        umask 077
+        printf 'tuxos %s\n' "$pass" > "$login"
+        sunshine --creds tuxos "$pass" >/dev/null 2>&1
+    fi
+    read -r user pass < "$login"
+}
+start() {
+    command -v sunshine >/dev/null || { echo "tuxos-stream: Sunshine is not installed" >&2; exit 3; }
+    running && return 0
+    creds
+    setsid -f sh -c 'echo $$ > "$1"; exec sunshine' sh "$pidf" >"$run/tuxos-sunshine.log" 2>&1
+    sleep 2
+    running || { echo "tuxos-stream: Sunshine did not start (see $run/tuxos-sunshine.log)" >&2; exit 1; }
+}
+case "$1" in
+    on) start; : > "$flag" ;;
+    off) running && kill "$(cat "$pidf")"; rm -f "$pidf" "$flag" ;;
+    status) running && echo on || echo off ;;
+    restore) [ -e "$flag" ] && start ;;
+    pin)
+        [ -n "$2" ] || exit 2
+        printf '%s' "$2" | grep -qE '^[0-9]{4}$' || { echo "tuxos-stream: the PIN has 4 digits" >&2; exit 2; }
+        running || start
+        creds
+        name=$(printf '%s' "${3:-Moonlight}" | tr -cd 'A-Za-z0-9 ._-')
+        # the device that asked to pair (Moonlight: "Add PC" shows the PIN)
+        id=$(curl -sk --max-time 10 -u "$user:$pass" "$api/pin" | jq -r '.pairings[0].id // empty' 2>/dev/null)
+        [ -n "$id" ] || { echo "tuxos-stream: no device is waiting: add this PC in Moonlight first" >&2; exit 4; }
+        out=$(curl -sk --max-time 10 -u "$user:$pass" -H 'Content-Type: application/json' \
+              -d "{\"pairing_id\":\"$id\",\"pin\":\"$2\",\"name\":\"$name\"}" "$api/pin")
+        printf '%s' "$out" | grep -q '"status":[ ]*\(true\|"true"\)' && echo paired || { echo "tuxos-stream: not paired ($out)" >&2; exit 1; } ;;
+    pending)
+        # devices waiting to pair (their count; the shell asks for the PIN)
+        running || { echo 0; exit 0; }
+        creds
+        curl -sk --max-time 5 -u "$user:$pass" "$api/pin" | jq -r '.pairings | length' 2>/dev/null || echo 0 ;;
+    clients)
+        running || exit 0
+        creds
+        curl -sk --max-time 10 -u "$user:$pass" "$api/clients/list" | jq -r '.named_certs[]?.name' 2>/dev/null ;;
+    *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

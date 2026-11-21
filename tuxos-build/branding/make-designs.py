@@ -4,7 +4,7 @@
     make-designs.py TUX_PNG ASCII_TXT OUTDIR
 
 Writes, under OUTDIR:
-  desktop/tuxos-wallpaper.jpg       "Corner glow" wallpaper (3840x2160)
+  desktop/tuxos-corner-glow.jpg     "Corner glow" wallpaper (3840x2160; a choice, not the default)
   grub-live/background.png          "Terminal" GRUB background, live ISO
   grub-installed/background.png     the same for the installed system
   grub-*/highlight_[cwe].png ...    GRUB menu pixmaps
@@ -143,7 +143,7 @@ def grub_pixmaps(d):
 if __name__ == '__main__':
     for sub in ('desktop', 'grub-live', 'grub-installed'):
         os.makedirs(f'{OUT}/{sub}', exist_ok=True)
-    wallpaper(f'{OUT}/desktop/tuxos-wallpaper.jpg')
+    wallpaper(f'{OUT}/desktop/tuxos-corner-glow.jpg')
     grub_background(f'{OUT}/grub-live/background.png', 'live')
     grub_background(f'{OUT}/grub-installed/background.png', 'boot')
     grub_pixmaps(f'{OUT}/grub-live')

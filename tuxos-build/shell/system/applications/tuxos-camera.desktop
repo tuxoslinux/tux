@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Camera
+Name[bg]=Камера
+Comment=Take photos and videos with your webcam
+Comment[bg]=Снимай и записвай видео с уеб камерата
+Exec=tuxos-app camera
+Icon=camera-web
+Categories=AudioVideo;Video;Recorder;
+Keywords=camera;webcam;photo;selfie;video;
+StartupWMClass=tuxos-camera

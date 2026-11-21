@@ -1,0 +1,26 @@
+#!/bin/sh
+# tuxos-drivernotes PKG VERSION : what a graphics driver update says about
+# games, in the upstream project's own words (TuxOS never writes notes).
+#   line 1: the release notes' address
+#   then up to 5 notes from the release's bug-fix list that mention games,
+#   crashes, hangs, glitches or performance (Mesa; NVIDIA: the address only)
+# Cached in ~/.cache/tuxos/drivernotes.
+pkg="$1"; ver=$(printf '%s' "$2" | sed 's/^[0-9]*://; s/-[^-]*$//')
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/drivernotes"
+mkdir -p "$cache"
+case "$pkg" in
+    mesa|lib32-mesa|vulkan-radeon|vulkan-intel)
+        url="https://docs.mesa3d.org/relnotes/$ver.html"
+        f="$cache/mesa-$ver.txt"
+        if [ ! -s "$f" ]; then
+            curl -fsL --max-time 15 "$url" 2>/dev/null |
+                sed -n '/<section id="bug-fixes"/,/<section id="changes"/p' | tr '\n' ' ' | sed 's/<li>/\n/g' | sed 's/<[^>]*>//g; s/&quot;/"/g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&#39;/'"'"'/g' |
+                sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -iE 'game|steam|proton|dxvk|vkd3d|crash|hang|freez|flicker|corrupt|glitch|stutter|performance|regression|black screen' |
+                grep -viE 'dEQP|piglit|vk-cts|\bCTS\b|deqp' | head -n 5 > "$f.new" && mv "$f.new" "$f"
+            rm -f "$f.new"
+        fi
+        echo "$url"; cat "$f" 2>/dev/null ;;
+    nvidia*|lib32-nvidia*)
+        echo "https://www.nvidia.com/en-us/drivers/unix/" ;;
+    *) echo "usage: tuxos-drivernotes mesa|nvidia-utils VERSION" >&2; exit 2 ;;
+esac

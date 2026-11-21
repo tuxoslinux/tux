@@ -1,0 +1,6 @@
+{
+ "pins": ["tuxos-installer", "tuxos-files", "kitty"],
+ "lockMinutes": 0,
+ "restoreApps": "never",
+ "bootCard": false
+}

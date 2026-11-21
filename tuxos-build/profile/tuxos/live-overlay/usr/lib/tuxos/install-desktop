@@ -63,6 +63,11 @@ fi
 
 mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' \
     "${data}/packages/common.list" "${data}/packages/${desktop}.list")
+# the TuxOS desktop logs in through greetd (its own login screen):
+# sddm-dinit and greetd-dinit cannot be installed together
+if [[ "${desktop}" == tuxos ]]; then
+    mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | grep -v -x -e sddm -e sddm-dinit)
+fi
 
 # Download from the TuxOS repositories in the new system's pacman.conf.
 # Together with a full upgrade, so the new system is never partly upgraded;
@@ -85,8 +90,24 @@ cp -a "${data}/common/root/." "${root}/"
 [[ -d "${data}/${desktop}/root" ]] && cp -a "${data}/${desktop}/root/." "${root}/"
 [[ -d "${data}/${desktop}/skel" ]] && cp -a "${data}/${desktop}/skel/." "${root}/etc/skel/"
 
-# Graphical login
-in_target ln -sf /etc/dinit.d/sddm /etc/dinit.d/boot.d/sddm
+# Graphical login: SDDM, or greetd with TuxOS' login screen
+if [[ "${desktop}" == tuxos ]]; then
+    in_target ln -sf /etc/dinit.d/greetd /etc/dinit.d/boot.d/greetd
+    in_target install -d -o greeter -g greeter -m700 /var/lib/tuxos-greeter
+    # each user's wallpaper for the login screen (sticky like /tmp; the login
+    # screen only trusts a file owned by that user)
+    in_target install -d -m1777 /var/lib/tuxos-login-wallpapers
+    # the login password also unlocks the keyring (browsers, Wi-Fi secrets):
+    # no second password prompt after logging in
+    if ! grep -q pam_gnome_keyring "${root}/etc/pam.d/greetd"; then
+        sed -i '/^auth.*include.*system-local-login/a auth       optional     pam_gnome_keyring.so' "${root}/etc/pam.d/greetd"
+        sed -i '/^session.*include.*system-local-login/a session    optional     pam_gnome_keyring.so auto_start' "${root}/etc/pam.d/greetd"
+    fi
+    # text snippets (";mail" -> the address) for the TuxOS shell
+    in_target ln -sf /etc/dinit.d/tuxos-snippetd /etc/dinit.d/boot.d/tuxos-snippetd
+else
+    in_target ln -sf /etc/dinit.d/sddm /etc/dinit.d/boot.d/sddm
+fi
 
 # Sound for the user: started by the user's dinit instance at login. The
 # links go into /etc/skel, which the users step copies into the new home
@@ -122,6 +143,22 @@ case "${desktop}" in
         for f in "${root}"/usr/share/plasma/look-and-feel/org.kde.breeze*.desktop/contents/defaults; do
             [[ -f "$f" ]] && sed -i 's/^Image=.*/Image=TuxOS/' "$f"
         done
+        ;;
+    tuxos)
+        session=/usr/share/wayland-sessions/tuxos.desktop
+        # the installer's keyboard layout (TuxOS Control > Keyboard edits it)
+        mkdir -p "${root}/etc/skel/.config/hypr"
+        printf -- '-- keyboard chosen in the TuxOS installer\nhl.config({ input = { kb_layout = "%s", kb_variant = "%s", kb_options = "grp:alt_shift_toggle" } })\n' \
+            "${layout}" "${variant}" > "${root}/etc/skel/.config/hypr/keyboard.lua"
+        # the login screen preselects this user
+        printf '{"user": "%s", "session": "tuxos"}\n' "${user}" > "${root}/var/lib/tuxos-greeter/greeter.json"
+        in_target chown greeter:greeter /var/lib/tuxos-greeter/greeter.json
+        # the default wallpaper (the mountain) and "Corner glow" come from
+        # common/root; linked here, not in the packaged tree (the ISO build
+        # cannot copy links that point outside it)
+        ln -sf ../backgrounds/tuxos/tuxos-wallpaper.jpg "${root}/usr/share/tuxos/wallpaper.png"
+        ln -sf ../../backgrounds/tuxos/tuxos-wallpaper.jpg "${root}/usr/share/tuxos/wallpapers/tuxos-mountain.jpg"
+        ln -sf ../../backgrounds/tuxos/tuxos-corner-glow.jpg "${root}/usr/share/tuxos/wallpapers/tuxos-corner-glow.jpg"
         ;;
     hyprland)
         session=/usr/share/wayland-sessions/hyprland.desktop
@@ -190,8 +227,11 @@ case "${desktop}" in
         ;;
 esac
 
-# Preselect the user and the desktop on the login screen
-if [[ -n "${session}" && -f "${root}${session}" ]]; then
+# Preselect the user and the desktop on the login screen (SDDM; the TuxOS
+# login screen reads its own file, written above)
+if [[ "${desktop}" == tuxos ]]; then
+    [[ -f "${root}${session}" ]] || log "warning: session file ${session} not found"
+elif [[ -n "${session}" && -f "${root}${session}" ]]; then
     mkdir -p "${root}/var/lib/sddm"
     printf '[Last]\nSession=%s\nUser=%s\n' "${session}" "${user}" > "${root}/var/lib/sddm/state.conf"
     in_target chown -R sddm:sddm /var/lib/sddm

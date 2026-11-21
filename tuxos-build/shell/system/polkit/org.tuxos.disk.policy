@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS Disks: the password prompt says what it is for -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.disk">
+    <description>Write, format or check a drive</description>
+    <description xml:lang="bg">Запис, форматиране или проверка на диск</description>
+    <message>TuxOS Disks needs the administrator password to change a drive</message>
+    <message xml:lang="bg">Дискове на TuxOS се нуждае от паролата на администратора, за да промени диск</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-disk</annotate>
+  </action>
+</policyconfig>

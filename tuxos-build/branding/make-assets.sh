@@ -53,6 +53,10 @@ square 64 "${out}/calamares/tuxos-icon.png"
 # Chosen designs (make-designs.py): "Corner glow" wallpaper, "Terminal"
 # GRUB backgrounds and menu pixmaps
 python3 -I "${here}/make-designs.py" "${tux_src}" "${here}/tux-ascii.txt" "${out}"
+# The default wallpaper (owner, 2026-11-09): the mountain at night,
+# branding/wallpapers/tuxos-mountain.jpg (enhanced 4x with Real-ESRGAN,
+# 3840x2160). "Corner glow" stays as a choice.
+cp "${here}/wallpapers/tuxos-mountain.jpg" "${out}/desktop/tuxos-wallpaper.jpg"
 
 # GRUB fonts (Noto Sans Mono) and menu icons
 for t in grub-live grub-installed; do
@@ -95,6 +99,7 @@ card() { # id title subtitle
         -font "${font_reg}" -pointsize 30 -fill "${grey}" -gravity southwest -annotate +56+86 "$3" \
         "${out}/calamares/desktop-$1.png"
 }
+card tuxos    "TuxOS desktop" "Glass bar and dock, launcher, Game HUD"
 card plasma   "KDE Plasma" "Modern, polished and very customizable"
 card cosmic   "COSMIC"     "Fast new Wayland desktop from System76"
 card hyprland "Hyprland"   "Tiling Wayland compositor with animations"
@@ -128,7 +133,7 @@ cp "${out}"/pixmaps/tuxos-logo.png "${profile}"/root-overlay/usr/share/pixmaps/
 cp "${out}"/calamares/*.png "${profile}"/live-overlay/usr/share/calamares/branding/tuxos/
 desktop="${profile}"/live-overlay/usr/share/tuxos/desktop/common/root
 mkdir -p "${desktop}"/usr/share/backgrounds/tuxos "${desktop}"/usr/share/wallpapers/TuxOS/contents/images
-cp "${out}"/desktop/tuxos-wallpaper.jpg "${desktop}"/usr/share/backgrounds/tuxos/
+cp "${out}"/desktop/tuxos-wallpaper.jpg "${out}"/desktop/tuxos-corner-glow.jpg "${desktop}"/usr/share/backgrounds/tuxos/
 cp "${out}"/desktop/tuxos-wallpaper.jpg "${desktop}"/usr/share/wallpapers/TuxOS/contents/images/3840x2160.jpg
 cp "${out}"/desktop/tuxos-wallpaper.jpg "${desktop}"/usr/share/sddm/themes/tuxos/background.jpg
 # Login screen: the "Terminal" SDDM theme with the ASCII Tux built in

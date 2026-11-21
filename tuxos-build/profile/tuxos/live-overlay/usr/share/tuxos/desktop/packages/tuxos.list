@@ -1,0 +1,72 @@
+# TuxOS desktop: Hyprland + the TuxOS shell (Quickshell), login screen in
+# greetd + cage (instead of SDDM; install-desktop drops SDDM for it)
+hyprland
+quickshell
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+greetd
+greetd-dinit
+cage
+hypridle
+hyprsunset
+hyprpicker
+# terminal (TuxOS' own apps cover files, text, pictures, PDFs, archives)
+kitty
+# the default browser
+helium-browser
+syntax-highlighting
+poppler
+# Disks: formatting, bootable USB, health
+dosfstools
+exfatprogs
+parted
+smartmontools
+# Store: update checks, Flathub
+pacman-contrib
+fakeroot
+flatpak
+mpv
+mpv-mpris
+# shell helpers: clipboard, screenshots + text recognition, media,
+# brightness on monitors (DDC/CI), music visualizer, recording
+wl-clipboard
+cliphist
+grim
+slurp
+wtype
+tesseract
+tesseract-data-eng
+tesseract-data-bul
+playerctl
+# UI sounds (Settings > Notifications, off by default)
+sound-theme-freedesktop
+brightnessctl
+ddcutil
+cava
+gpu-screen-recorder
+jq
+curl
+libnotify
+# hardware the shell talks to
+upower
+power-profiles-daemon
+bluez
+bluez-utils
+networkmanager
+headsetcontrol
+fprintd
+# Game HUD
+mangohud
+# look: GTK / Qt in TuxOS' colours, icons, fonts
+adw-gtk-theme
+qt6ct
+papirus-icon-theme
+qt6-wayland
+qt5-wayland
+qt6-multimedia
+ttf-jetbrains-mono-nerd
+adwaita-fonts
+# microphone noise filter
+noise-suppression-for-voice
+# secrets (passwords for apps)
+gnome-keyring

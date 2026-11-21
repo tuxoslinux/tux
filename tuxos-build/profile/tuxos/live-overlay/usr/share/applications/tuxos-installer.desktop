@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Install TuxOS
+Name[bg]=Инсталирай TuxOS
 Comment=Install TuxOS on this computer
+Comment[bg]=Инсталирай TuxOS на този компютър
 Icon=/usr/share/pixmaps/tuxos-logo.png
 Exec=/usr/lib/tuxos/run-installer
 Terminal=false

@@ -1,0 +1,18 @@
+#!/bin/sh
+# tuxos-greeter: the TuxOS login screen (greetd's default_session): the
+# TuxOS shell in greeter mode inside cage, a small kiosk compositor that
+# ends when the user logs in.
+# Graphics whose driver loads but cannot draw (VirtualBox's VMSVGA without
+# 3D acceleration, some old GPUs) get Mesa's software renderer, as in
+# tuxos-session; if cage still cannot start, its own CPU renderer (pixman).
+if command -v tuxos-glcheck >/dev/null && ! tuxos-glcheck >/dev/null 2>&1; then
+    export GBM_ALWAYS_SOFTWARE=1 LIBGL_ALWAYS_SOFTWARE=1 WLR_RENDERER_ALLOW_SOFTWARE=1
+fi
+export TUXOS_GREETER=1 XDG_STATE_HOME=/var/lib/tuxos-greeter QT_QPA_PLATFORM=wayland
+start=$(date +%s)
+cage -s -d -- qs -c tuxos
+code=$?
+if [ "$code" != 0 ] && [ $(( $(date +%s) - start )) -lt 10 ]; then
+    WLR_RENDERER=pixman exec cage -s -d -- qs -c tuxos
+fi
+exit "$code"

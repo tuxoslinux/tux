@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Month, week and day views, events and holidays
+Exec=tuxos-app calendar
+Icon=x-office-calendar
+Categories=Office;Calendar;
+Keywords=calendar;events;date;holidays;
+StartupWMClass=tuxos-calendar

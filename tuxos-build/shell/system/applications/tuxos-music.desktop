@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Music
+Name[bg]=Музика
+Comment=Play the music in your Music folder
+Comment[bg]=Пускай музиката от папка Музика
+Exec=tuxos-app music
+Icon=multimedia-audio-player
+Categories=AudioVideo;Audio;Player;
+Keywords=music;songs;albums;player;mp3;flac;
+StartupWMClass=tuxos-music

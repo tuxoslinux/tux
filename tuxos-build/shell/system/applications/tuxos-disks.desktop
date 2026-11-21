@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Disks
+Name[bg]=Дискове
+Comment=Bootable USB, format, drive health
+Comment[bg]=Стартираща USB памет, форматиране, здраве на дисковете
+Exec=tuxos-app disks
+Icon=drive-harddisk
+Categories=System;Utility;
+Keywords=disk;usb;format;bootable;iso;smart;partition;
+StartupWMClass=tuxos-disks

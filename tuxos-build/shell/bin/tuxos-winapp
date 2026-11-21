@@ -1,0 +1,86 @@
+#!/bin/bash
+# tuxos-winapp: Windows apps (SPEC round 6 #18). Opening an .exe / .msi
+# asks whether to run it with Proton (umu-launcher); each app gets its own
+# Windows folder (prefix) in ~/.local/share/tuxos/windows/<app>/, a Proton
+# version and, if wanted, a shortcut in the launcher. Settings > Apps for
+# Windows lists and manages them.
+#   tuxos-winapp open FILE        ask (notification), then run it
+#   tuxos-winapp run FILE         run it (adds the app the first time)
+#   tuxos-winapp start APP        run an added app again
+#   tuxos-winapp list             "app|name|exe|proton|shortcut 0/1" per app
+#   tuxos-winapp proton APP VER   GE-Proton (default, newest) | UMU-Proton
+#   tuxos-winapp shortcut APP on|off
+#   tuxos-winapp remove APP       forget it: its Windows folder and shortcut
+set -u
+root="${XDG_DATA_HOME:-$HOME/.local/share}/tuxos/windows"
+apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+
+slug() { basename -- "$1" | sed 's/\.[A-Za-z0-9]*$//; s/[^A-Za-z0-9._-]/-/g; s/--*/-/g' | tr 'A-Z' 'a-z'; }
+nice() { basename -- "$1" | sed 's/\.[A-Za-z0-9]*$//; s/[_-]/ /g'; }
+get() { sed -n "s/^$2=//p" "$root/$1/app.conf" 2>/dev/null | head -1; }
+put() { local f="$root/$1/app.conf"; touch "$f"; grep -v "^$2=" "$f" > "$f.n"; printf '%s=%s\n' "$2" "$3" >> "$f.n"; mv "$f.n" "$f"; }
+
+need_umu() {
+    command -v umu-run >/dev/null && return 0
+    notify-send -a "Windows apps" -i dialog-information "Windows apps need umu-launcher" \
+        "Install it in Settings > Apps for Windows (one click), then open the file again." 2>/dev/null
+    exit 3
+}
+
+launch() {
+    local a="$1" exe proton
+    exe=$(get "$a" exe); proton=$(get "$a" proton)
+    [ -e "$exe" ] || { notify-send -a "Windows apps" "$(get "$a" name) is gone" "$exe was moved or deleted." 2>/dev/null; exit 1; }
+    need_umu
+    mkdir -p "$root/$a/prefix"
+    put "$a" last "$(date +%s)"
+    cd "$(dirname -- "$exe")" || exit 1
+    # umu downloads the Proton version the first time (a few hundred MB)
+    WINEPREFIX="$root/$a/prefix" GAMEID="${UMU_GAMEID:-umu-default}" PROTONPATH="${proton:-GE-Proton}" \
+        exec umu-run "$exe" >"$root/$a/last-run.log" 2>&1
+}
+
+add() {
+    local f a
+    f=$(readlink -f -- "$1") || exit 1
+    a=$(slug "$f")
+    # the same name from another place: its own app
+    if [ -d "$root/$a" ] && [ "$(get "$a" exe)" != "$f" ]; then a="$a-$(printf %s "$f" | md5sum | cut -c1-6)"; fi
+    if [ ! -d "$root/$a" ]; then
+        mkdir -p "$root/$a"
+        put "$a" name "$(nice "$f")"; put "$a" exe "$f"; put "$a" proton GE-Proton
+        # an installer (setup.exe, .msi) installs into the prefix; the app
+        # it installs gets its own shortcut later from Settings
+    fi
+    echo "$a"
+}
+
+shortcut() {
+    local a="$1" f="$apps/tuxos-win-$1.desktop"
+    if [ "$2" = on ]; then
+        mkdir -p "$apps"
+        printf '[Desktop Entry]\nType=Application\nName=%s\nComment=Windows app (Proton)\nExec=tuxos-winapp start %s\nIcon=wine\nCategories=Wine;\nX-TuxOS-Windows=%s\n' \
+            "$(get "$a" name)" "$a" "$a" > "$f"
+    else rm -f "$f"; fi
+}
+
+case "${1:-}" in
+    open)
+        f="${2:?file}"
+        act=$(notify-send -a "Windows apps" -i wine -w -A run="Run it" -A cancel="Not now" \
+            "Run $(basename -- "$f")?" "This is a Windows program. TuxOS can run it with Proton, in its own Windows folder. Only run programs you trust." 2>/dev/null)
+        [ "$act" = run ] || exit 0
+        launch "$(add "$f")" ;;
+    run) launch "$(add "${2:?file}")" ;;
+    start) [ -d "$root/${2:?app}" ] || exit 1; launch "$2" ;;
+    list)
+        for d in "$root"/*/; do
+            [ -f "$d/app.conf" ] || continue
+            a=$(basename "$d")
+            printf '%s|%s|%s|%s|%s\n' "$a" "$(get "$a" name)" "$(get "$a" exe)" "$(get "$a" proton)" "$([ -e "$apps/tuxos-win-$a.desktop" ] && echo 1 || echo 0)"
+        done ;;
+    proton) [ -d "$root/${2:?app}" ] && put "$2" proton "${3:-GE-Proton}" ;;
+    shortcut) [ -d "$root/${2:?app}" ] && shortcut "$2" "${3:-on}" ;;
+    remove) a="${2:?app}"; [ -n "$a" ] && [ -d "$root/$a" ] || exit 1; shortcut "$a" off; rm -rf -- "${root:?}/$a" ;;
+    *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

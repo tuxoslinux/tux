@@ -1,0 +1,36 @@
+# TuxOS desktop: its own apps open folders, text, pictures, videos and PDFs
+# (read only in the TuxOS session: XDG_CURRENT_DESKTOP=TuxOS; the user's
+# own ~/.config/mimeapps.list still wins).
+[Default Applications]
+inode/directory=tuxos-files.desktop
+text/plain=tuxos-editor.desktop
+text/markdown=tuxos-editor.desktop
+text/x-python=tuxos-editor.desktop
+text/x-shellscript=tuxos-editor.desktop
+application/x-shellscript=tuxos-editor.desktop
+application/json=tuxos-editor.desktop
+text/x-log=tuxos-editor.desktop
+image/png=tuxos-images.desktop
+image/jpeg=tuxos-images.desktop
+image/webp=tuxos-images.desktop
+image/gif=tuxos-images.desktop
+image/bmp=tuxos-images.desktop
+image/svg+xml=tuxos-images.desktop
+image/avif=tuxos-images.desktop
+image/tiff=tuxos-images.desktop
+video/mp4=tuxos-video.desktop
+video/x-matroska=tuxos-video.desktop
+video/webm=tuxos-video.desktop
+video/quicktime=tuxos-video.desktop
+video/x-msvideo=tuxos-video.desktop
+video/mpeg=tuxos-video.desktop
+application/pdf=tuxos-documents.desktop
+x-scheme-handler/http=helium.desktop
+x-scheme-handler/https=helium.desktop
+text/html=helium.desktop
+application/xhtml+xml=helium.desktop
+application/x-ms-dos-executable=tuxos-winapp.desktop
+application/x-msdownload=tuxos-winapp.desktop
+application/vnd.microsoft.portable-executable=tuxos-winapp.desktop
+application/x-msi=tuxos-winapp.desktop
+application/x-ms-installer=tuxos-winapp.desktop

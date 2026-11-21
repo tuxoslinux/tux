@@ -1,0 +1,90 @@
+#!/bin/bash
+# tuxos-index: search inside files (SPEC round 5 #12): a light, local text
+# index of documents and notes in the home folder, for the launcher.
+#   tuxos-index build            bring the index up to date (only changed
+#                                files are read again; the shell runs it
+#                                when the PC is idle, never during games)
+#   tuxos-index search WORDS     up to 8 files that contain every word:
+#                                "path<TAB>a few words around the first one"
+#   tuxos-index status           "files bytes last-build-epoch"
+# Folders: ~/.config/tuxos/index-folders (one per line, relative to home),
+# else Documents, Desktop, Notes, Downloads and Projects. Text, Markdown and
+# code; PDF (poppler); OpenDocument, Word / Excel / PowerPoint, EPUB
+# (bsdtar). Stored in ~/.cache/tuxos/index (only on this PC).
+set -u
+dir="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/index"
+idx="$dir/files.tsv"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/index-folders"
+mkdir -p "$dir"
+
+folders() {
+    if [[ -s "$cfg" ]]; then grep -v '^#' "$cfg"; else printf '%s\n' Documents Desktop Notes Downloads Projects; fi |
+        while read -r f; do [[ -n "$f" && -d "$HOME/$f" ]] && printf '%s\n' "$HOME/$f"; done
+}
+
+# the text of one file, on one line (at most 50 kB)
+extract() {
+    local f="$1"
+    case "${f,,}" in
+        *.pdf) pdftotext -l 40 -q "$f" - 2>/dev/null ;;
+        *.docx) bsdtar -xOf "$f" word/document.xml 2>/dev/null | sed 's/<[^>]*>/ /g' ;;
+        *.xlsx) bsdtar -xOf "$f" xl/sharedStrings.xml 2>/dev/null | sed 's/<[^>]*>/ /g' ;;
+        *.pptx) bsdtar -xOf "$f" 'ppt/slides/*.xml' 2>/dev/null | sed 's/<[^>]*>/ /g' ;;
+        *.odt|*.ods|*.odp) bsdtar -xOf "$f" content.xml 2>/dev/null | sed 's/<[^>]*>/ /g' ;;
+        *.epub) bsdtar -xOf "$f" '*.xhtml' '*.html' 2>/dev/null | sed 's/<[^>]*>/ /g' ;;
+        *.html|*.htm|*.xml|*.svg) head -c 200000 "$f" | sed 's/<[^>]*>/ /g' ;;
+        *) head -c 60000 "$f" ;;
+    esac | tr '\t\n\r\f\v' '     ' | tr -s ' ' | head -c 50000
+}
+
+build() {
+    exec 9>"$dir/lock"
+    flock -n 9 || exit 0                     # one build at a time
+    declare -A old
+    if [[ -s "$idx" ]]; then
+        while IFS=$'\t' read -r p m _; do old["$p"]="$m"; done < <(cut -f1,2 "$idx")
+    fi
+    local new="$idx.new" f m
+    : > "$new"
+    while IFS= read -r -d '' f; do
+        m=$(stat -c %Y "$f" 2>/dev/null) || continue
+        if [[ "${old[$f]:-}" == "$m" ]]; then
+            # unchanged: keep the line from before
+            grep -m1 -F -- "$f"$'\t'"$m"$'\t' "$idx" >> "$new"
+        else
+            printf '%s\t%s\t%s\n' "$f" "$m" "$(extract "$f")" >> "$new"
+        fi
+    done < <(folders | while read -r d; do
+        find "$d" \( -name '.*' -o -name node_modules -o -name __pycache__ -o -name target \) -prune -o -type f -size -30M \
+            \( -iname '*.txt' -o -iname '*.md' -o -iname '*.org' -o -iname '*.rst' -o -iname '*.csv' -o -iname '*.json' -o -iname '*.log' \
+               -o -iname '*.tex' -o -iname '*.html' -o -iname '*.htm' -o -iname '*.xml' -o -iname '*.pdf' -o -iname '*.odt' -o -iname '*.ods' \
+               -o -iname '*.odp' -o -iname '*.docx' -o -iname '*.xlsx' -o -iname '*.pptx' -o -iname '*.epub' -o -iname '*.sh' -o -iname '*.py' \
+               -o -iname '*.js' -o -iname '*.ts' -o -iname '*.c' -o -iname '*.h' -o -iname '*.cpp' -o -iname '*.rs' -o -iname '*.go' \
+               -o -iname '*.java' -o -iname '*.qml' -o -iname '*.lua' -o -iname '*.conf' -o -iname '*.ini' -o -iname '*.toml' -o -iname '*.yaml' \) -print0 2>/dev/null
+    done)
+    mv -f "$new" "$idx"
+    date +%s > "$dir/built"
+}
+
+search() {
+    [[ -s "$idx" ]] || exit 0
+    local q="${*,,}"
+    [[ ${#q} -ge 3 ]] || exit 0
+    # every word must be there (any case); the snippet starts near the first
+    awk -F'\t' -v q="$q" -v home="$HOME" '
+        BEGIN { n = split(q, w, /[ ]+/) }
+        { t = tolower($3); ok = 1
+          for (i = 1; i <= n; i++) if (w[i] != "" && index(t, w[i]) == 0) { ok = 0; break }
+          if (!ok) next
+          at = index(t, w[1]); s = at > 40 ? at - 40 : 1
+          snip = substr($3, s, 120); if (s > 1) snip = "..." snip
+          print $1 "\t" snip
+          if (++found >= 8) exit }' "$idx"
+}
+
+case "${1:-}" in
+    build) build ;;
+    search) shift; search "$@" ;;
+    status) printf '%s %s %s\n' "$(wc -l < "$idx" 2>/dev/null || echo 0)" "$(stat -c %s "$idx" 2>/dev/null || echo 0)" "$(cat "$dir/built" 2>/dev/null || echo 0)" ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

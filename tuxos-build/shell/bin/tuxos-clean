@@ -1,0 +1,143 @@
+#!/bin/bash
+# tuxos-clean: one-click cleanup (SPEC system care #11) and Tidy Downloads
+# (SPEC round 5 #13).
+#   tuxos-clean sizes          "what bytes" per line: packages (old versions,
+#                              keeping the one "Undo update" needs), orphans
+#                              (packages nothing needs any more), shaders
+#                              (Steam shader caches of uninstalled games),
+#                              logs (old game logs, rotated system logs),
+#                              trash, thumbnails
+#   tuxos-clean run WHAT...    clean these (system parts ask for the
+#                              password once, through pkexec)
+#   tuxos-clean tidy DAYS      move files in ~/Downloads older than DAYS
+#                              days to the Trash; prints how many
+#   tuxos-clean untidy         put the last tidy's files back
+set -u
+state="${XDG_STATE_HOME:-$HOME/.local/state}/tuxos"
+trash="${XDG_DATA_HOME:-$HOME/.local/share}/Trash"
+gamelogs="${XDG_DATA_HOME:-$HOME/.local/share}/tuxos/gamelogs"
+
+# ~/Downloads (or the folder xdg-user-dirs names; never the home folder itself)
+downloads() { local d; d=$(xdg-user-dir DOWNLOAD 2>/dev/null); [ -n "$d" ] && [ "$d" != "$HOME" ] || d="$HOME/Downloads"; echo "$d"; }
+bytes() { if [ $# -gt 0 ]; then du -cb -- "$@" 2>/dev/null | tail -1 | cut -f1; else echo 0; fi; }
+
+old_packages() { { paccache -dvqk2 2>/dev/null; paccache -dvquk0 2>/dev/null; } | grep '^/' | sort -u; }
+orphans() { pacman -Qtdq 2>/dev/null; }
+orphan_bytes() {
+    local o; o=$(orphans)
+    [ -n "$o" ] || { echo 0; return; }
+    LC_ALL=C pacman -Qi $o 2>/dev/null | awk '/^Installed Size/ { v = $4; u = $5
+        if (u == "KiB") v *= 1024; else if (u == "MiB") v *= 1048576; else if (u == "GiB") v *= 1073741824
+        s += v } END { printf "%d\n", s }'
+}
+# Steam libraries, then shader caches whose game is not installed
+steam_libs() {
+    local s
+    for s in "$HOME/.local/share/Steam" "$HOME/.steam/steam"; do
+        [ -d "$s/steamapps" ] || continue
+        echo "$s/steamapps"
+        sed -n 's/^[[:space:]]*"path"[[:space:]]*"\(.*\)"/\1/p' "$s/steamapps/libraryfolders.vdf" 2>/dev/null | sed 's|$|/steamapps|'
+        break
+    done | sort -u
+}
+old_shaders() {
+    local libs l d id found
+    libs=$(steam_libs)
+    [ -n "$libs" ] || return 0
+    while read -r l; do
+        for d in "$l"/shadercache/*/; do
+            [ -d "$d" ] || continue
+            id=$(basename "$d"); found=0
+            while read -r k; do [ -e "$k/appmanifest_$id.acf" ] && found=1; done <<< "$libs"
+            [ "$found" = 0 ] && printf '%s\n' "${d%/}"
+        done
+    done <<< "$libs"
+}
+old_logs() {
+    find "$gamelogs" -maxdepth 1 -type f -mtime +30 2>/dev/null
+    find "$HOME/.local/share/xorg" -maxdepth 1 -name '*.old' 2>/dev/null
+}
+root_logs() { find /var/log -type f \( -name '*.gz' -o -name '*.xz' -o -name '*.[0-9]' -o -name '*.old' \) 2>/dev/null; }
+
+sizes() {
+    local IFS=$'\n'
+    echo "packages $(bytes $(old_packages))"
+    echo "orphans $(orphan_bytes)"
+    echo "shaders $(bytes $(old_shaders))"
+    echo "logs $(( $(bytes $(old_logs)) + $(bytes $(root_logs)) ))"
+    echo "trash $(bytes "$trash/files" "$trash/info")"
+    echo "thumbnails $(bytes "$HOME/.cache/thumbnails")"
+}
+
+# as root (pkexec): packages, orphans, rotated system logs
+root_part() {
+    for w in "$@"; do
+        case "$w" in
+            packages) paccache -rqk2; paccache -rquk0 ;;
+            orphans) o=$(pacman -Qtdq); [ -n "$o" ] && pacman -Rns --noconfirm $o ;;
+            logs) root_logs | xargs -r -d '\n' rm -f -- ;;
+        esac
+    done
+}
+
+run() {
+    local sys=() w
+    for w in "$@"; do
+        case "$w" in
+            packages|orphans) sys+=("$w") ;;
+            logs) sys+=(logs); old_logs | xargs -r -d '\n' rm -f -- ;;
+            shaders) old_shaders | xargs -r -d '\n' rm -rf -- ;;
+            trash) rm -rf -- "$trash/files" "$trash/info" "$trash/expunged"; mkdir -p "$trash/files" "$trash/info" ;;
+            thumbnails) rm -rf -- "$HOME/.cache/thumbnails" ;;
+        esac
+    done
+    if [ ${#sys[@]} -gt 0 ]; then
+        # only logs and nothing else: rotated system logs are tiny, no password for them alone
+        if [ "${sys[*]}" != "logs" ] || [ -n "$(root_logs | head -1)" ]; then
+            pkexec "$(readlink -f "$0")" root "${sys[@]}"
+        fi
+    fi
+}
+
+tidy() {
+    local days="${1:-30}" dl n=0 f
+    dl=$(downloads)
+    [ -d "$dl" ] || { echo 0; return; }
+    mkdir -p "$state"
+    : > "$state/tidy-last"
+    # files and folders right in Downloads, untouched for DAYS days (not
+    # downloads still running)
+    while IFS= read -r -d '' f; do
+        case "$f" in *.part|*.crdownload|*.download|*.tmp) continue ;; esac
+        if gio trash -- "$f" 2>/dev/null; then
+            printf '%s\n' "$(basename -- "$f")" >> "$state/tidy-last"; n=$((n + 1))
+        fi
+    done < <(find "$dl" -mindepth 1 -maxdepth 1 -mtime +"$days" ! -name '.*' -print0 2>/dev/null)
+    echo "$n"
+}
+
+untidy() {
+    [ -s "$state/tidy-last" ] || exit 0
+    local dl n i p
+    dl=$(downloads)
+    while IFS= read -r n; do
+        # the newest trashed item that came from Downloads/<n>
+        while IFS= read -r i; do
+            p=$(sed -n 's/^Path=//p' "$trash/info/$i" | head -n1)
+            p=$(printf '%b' "$(printf %s "$p" | sed 's/%/\\x/g')")
+            [ "$p" = "$dl/$n" ] || continue
+            if [ ! -e "$p" ]; then mv -- "$trash/files/${i%.trashinfo}" "$p" && rm -f -- "$trash/info/$i"; fi
+            break
+        done < <(ls -t "$trash/info/" 2>/dev/null | grep -F -- "$n")
+    done < "$state/tidy-last"
+    rm -f "$state/tidy-last"
+}
+
+case "${1:-}" in
+    sizes) sizes ;;
+    run) shift; run "$@" ;;
+    root) shift; [ "$(id -u)" = 0 ] || exit 1; root_part "$@" ;;
+    tidy) tidy "${2:-30}" ;;
+    untidy) untidy ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

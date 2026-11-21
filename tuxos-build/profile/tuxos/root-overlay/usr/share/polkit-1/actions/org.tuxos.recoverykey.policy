@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS: the disk recovery key, shown once at the first login; it is a
+     secret, so even the person at the PC types the password -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.recoverykey">
+    <description>Show the encrypted disk's recovery key once</description>
+    <description xml:lang="bg">Показване на ключа за възстановяване на шифрования диск</description>
+    <message>TuxOS needs permission to show the recovery key</message>
+    <message xml:lang="bg">TuxOS се нуждае от разрешение, за да покаже ключа за възстановяване</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-recovery-key</annotate>
+  </action>
+</policyconfig>

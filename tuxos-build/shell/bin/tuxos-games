@@ -1,0 +1,212 @@
+#!/bin/bash
+# tuxos-games: the games installed on this PC, read locally from Steam,
+# Heroic (Epic, GOG, Amazon) and Lutris, for the TuxOS shell (launcher
+# "Games" row, launch card, per-game profiles, "Will it run?", drive advisor).
+#
+#   tuxos-games list           JSON array: id, name, source, appid, cover,
+#                              launch (command), dir, size (bytes), library
+#   tuxos-games running        the id of the game running now (empty if none)
+#   tuxos-games willitrun ID.. JSON {appid: {tier, anticheat}} from ProtonDB
+#                              and AreWeAntiCheatYet (cached a day; offline:
+#                              the cache, else "unknown")
+#   tuxos-games drives         JSON: each game library's drive (rotational,
+#                              transport, free bytes) for the drive advisor
+#   tuxos-games achievements ID  the Steam game's unlocked achievements from
+#                              Steam's local stats: "key<TAB>name<TAB>icon url"
+set -u
+
+steam_roots() {
+    local r
+    for r in "$HOME/.local/share/Steam" "$HOME/.steam/steam" "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam"; do
+        [[ -d "$r/steamapps" ]] && readlink -f "$r"
+    done | sort -u
+}
+
+# library folders from libraryfolders.vdf ("path" lines), the root first
+steam_libraries() {
+    local root="$1"
+    echo "$root"
+    [[ -r "$root/steamapps/libraryfolders.vdf" ]] || return 0
+    sed -n 's/^[[:space:]]*"path"[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$root/steamapps/libraryfolders.vdf" | sed 's/\\\\/\//g'
+}
+
+# one value from an .acf / .vdf ("key" "value")
+acf() { sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*\"\(.*\)\"[[:space:]]*\$/\1/p" "$2" | head -1; }
+
+steam_cover() {
+    local root="$1" id="$2" f
+    for f in "$root/appcache/librarycache/$id/library_600x900.jpg" "$root/appcache/librarycache/${id}_library_600x900.jpg"; do
+        [[ -r "$f" ]] && { echo "$f"; return; }
+    done
+    # newer Steam: one more folder level (a hash)
+    f=$(find "$root/appcache/librarycache/$id" -maxdepth 2 -name 'library_600x900*.jpg' 2>/dev/null | head -1)
+    [[ -n "$f" ]] && { echo "$f"; return; }
+    f=$(find "$root/appcache/librarycache/$id" -maxdepth 2 -name 'header.jpg' 2>/dev/null | head -1)
+    echo "$f"
+}
+
+list_steam() {
+    local root lib m id name dir size state seen=" "
+    while read -r root; do
+        while read -r lib; do
+            [[ -d "$lib/steamapps" ]] || continue
+            for m in "$lib"/steamapps/appmanifest_*.acf; do
+                [[ -r "$m" ]] || continue
+                id=$(acf appid "$m"); name=$(acf name "$m"); dir=$(acf installdir "$m")
+                size=$(acf SizeOnDisk "$m"); state=$(acf StateFlags "$m")
+                [[ -z "$id" || "$seen" == *" $id "* ]] && continue
+                seen+="$id "
+                # tools (Proton, runtimes, redistributables) are not games
+                [[ "$name" =~ ^(Proton|Steam\ Linux\ Runtime|Steamworks\ Common|SteamVR) ]] && continue
+                jq -nc --arg id "$id" --arg name "$name" --arg cover "$(steam_cover "$root" "$id")" \
+                    --arg dir "$lib/steamapps/common/$dir" --arg size "${size:-0}" --arg lib "$lib" --arg state "${state:-4}" \
+                    '{id: ("steam:" + $id), name: $name, source: "Steam", appid: $id, cover: $cover,
+                      launch: ["steam", ("steam://rungameid/" + $id)], dir: $dir, size: ($size | tonumber? // 0),
+                      library: $lib, installed: (($state | tonumber? // 4) % 8 >= 4)}'
+            done
+        done < <(steam_libraries "$root")
+    done < <(steam_roots)
+}
+
+list_heroic() {
+    local h="$HOME/.config/heroic" f
+    [[ -d "$h" ]] || h="$HOME/.var/app/com.heroicgameslauncher.hgl/config/heroic"
+    [[ -d "$h" ]] || return 0
+    # Epic (legendary): installed.json is { appName: { title, install_path, install_size } }
+    f="$h/legendaryConfig/legendary/installed.json"
+    [[ -r "$f" ]] && jq -c --arg c "$h/images-cache" 'to_entries[] | .value as $g |
+        {id: ("epic:" + .key), name: ($g.title // .key), source: "Epic", appid: .key, cover: "",
+         launch: ["xdg-open", ("heroic://launch/legendary/" + .key)], dir: ($g.install_path // ""),
+         size: ($g.install_size // 0), library: (($g.install_path // "") | sub("/[^/]*$"; "")), installed: true}' "$f" 2>/dev/null
+    # GOG: installed.json is { installed: [ { appName, install_path } ] }, titles in the library file
+    f="$h/gog_store/installed.json"
+    if [[ -r "$f" ]]; then
+        local lib="$h/store_cache/gog_library.json"
+        jq -c --slurpfile L <( [[ -r "$lib" ]] && cat "$lib" || echo '{}' ) '.installed[]? |
+            . as $g | (($L[0].games // []) | map(select(.app_name == $g.appName)) | .[0]) as $m |
+            {id: ("gog:" + $g.appName), name: ($m.title // $g.appName), source: "GOG", appid: $g.appName,
+             cover: "", launch: ["xdg-open", ("heroic://launch/gog/" + $g.appName)], dir: ($g.install_path // ""),
+             size: 0, library: (($g.install_path // "") | sub("/[^/]*$"; "")), installed: true}' "$f" 2>/dev/null
+    fi
+}
+
+list_lutris() {
+    local db="$HOME/.local/share/lutris/pga.db" covers="$HOME/.local/share/lutris/coverart"
+    [[ -r "$db" ]] || return 0
+    command -v sqlite3 >/dev/null || return 0
+    sqlite3 -separator $'\t' "$db" "select slug, name, coalesce(directory,''), coalesce(runner,'') from games where installed = 1" 2>/dev/null |
+    while IFS=$'\t' read -r slug name dir runner; do
+        local c=""
+        for c in "$covers/$slug.jpg" "$covers/$slug.png" ""; do [[ -z "$c" || -r "$c" ]] && break; done
+        jq -nc --arg slug "$slug" --arg name "$name" --arg dir "$dir" --arg cover "$c" --arg runner "$runner" \
+            '{id: ("lutris:" + $slug), name: $name, source: "Lutris", appid: $slug, cover: $cover,
+              launch: ["lutris", ("lutris:rungame/" + $slug)], dir: $dir, size: 0,
+              library: ($dir | sub("/[^/]*$"; "")), installed: true, runner: $runner}'
+    done
+}
+
+running() {
+    local id
+    # Steam (its reaper carries the app id)
+    id=$(ps -eo args= 2>/dev/null | sed -n 's/.*SteamLaunch AppId=\([0-9]\+\).*/\1/p' | head -1)
+    [[ -n "$id" ]] && { echo "steam:$id"; return; }
+    # umu (Heroic, Lutris): GAMEID in the environment of umu-run
+    local p
+    for p in $(pgrep -x umu-run 2>/dev/null); do
+        id=$(tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | sed -n 's/^GAMEID=//p' | head -1)
+        [[ -n "$id" ]] && { echo "umu:$id"; return; }
+    done
+    pgrep -x 'gamescope|gamescope-wl' >/dev/null && echo "gamescope"
+}
+
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/games"
+
+# ProtonDB summary per app id + the AreWeAntiCheatYet list
+willitrun() {
+    mkdir -p "$cache/protondb"
+    local ac="$cache/anticheat.json" now id f
+    now=$(date +%s)
+    if [[ ! -s "$ac" ]] || (( now - $(stat -c %Y "$ac") > 86400 )); then
+        curl -fsL --max-time 15 https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json -o "$ac.new" 2>/dev/null \
+            && jq -e 'type == "array"' "$ac.new" >/dev/null 2>&1 && mv "$ac.new" "$ac"
+        rm -f "$ac.new"
+    fi
+    {
+        for id in "$@"; do
+            f="$cache/protondb/$id.json"
+            if [[ ! -s "$f" ]] || (( now - $(stat -c %Y "$f") > 86400 )); then
+                if curl -fsL --max-time 10 "https://www.protondb.com/api/v1/reports/summaries/$id.json" -o "$f.new" 2>/dev/null \
+                   && jq -e '.tier' "$f.new" >/dev/null 2>&1; then
+                    mv "$f.new" "$f"
+                else
+                    rm -f "$f.new"
+                    # no report at all (404) is remembered as "unknown" too
+                    [[ -s "$f" ]] || echo '{"tier":"unknown"}' > "$f"
+                fi
+            fi
+            local anti="none"
+            if [[ -s "$ac" ]]; then
+                anti=$(jq -r --arg id "$id" '[.[] | select((.storeIds.steam // "") == $id)] | .[0] |
+                    if . == null then "none" else (.status // "unknown") end' "$ac" 2>/dev/null || echo unknown)
+            fi
+            jq -nc --arg id "$id" --slurpfile s "$f" --arg anti "$anti" '{($id): {tier: ($s[0].tier // "unknown"), anticheat: $anti}}'
+        done
+    } | jq -sc 'add // {}'
+}
+
+# the drive under each library: rotational? transport (nvme / sata / usb), free bytes
+drives() {
+    list_all | jq -r '.[].library' | sort -u | while read -r lib; do
+        [[ -d "$lib" ]] || continue
+        local src dev disk rota tran free
+        src=$(findmnt -no SOURCE --target "$lib" 2>/dev/null | sed 's/\[.*//')
+        dev=$(basename "$src")
+        disk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1); [[ -z "$disk" ]] && disk="$dev"
+        rota=$(cat "/sys/block/$disk/queue/rotational" 2>/dev/null || echo 0)
+        tran=$(lsblk -dno TRAN "/dev/$disk" 2>/dev/null)
+        [[ "$disk" == nvme* ]] && tran=nvme
+        free=$(df -B1 --output=avail "$lib" 2>/dev/null | tail -1 | tr -d ' ')
+        jq -nc --arg lib "$lib" --arg disk "$disk" --arg rota "$rota" --arg tran "${tran:-unknown}" --arg free "${free:-0}" \
+            '{library: $lib, disk: $disk, rotational: ($rota == "1"), transport: $tran, free: ($free | tonumber? // 0)}'
+    done | jq -sc '.'
+}
+
+# unlocked achievements: the schema names the bits of each achievement stat,
+# the user's stats hold them as a number (bit set = unlocked)
+achievements() {
+    local id="$1" root d schema user
+    while read -r root; do
+        d="$root/appcache/stats"
+        [[ -r "$d/UserGameStatsSchema_$id.bin" ]] || continue
+        schema="$d/UserGameStatsSchema_$id.bin"
+        user=$(ls -t "$d"/UserGameStats_*_"$id".bin 2>/dev/null | head -1)
+        break
+    done < <(steam_roots)
+    [[ -n "${schema:-}" && -n "${user:-}" ]] || return 0
+    { tuxos-steamstats "$schema" | sed 's/^/S /'; tuxos-steamstats "$user" | sed 's/^/U /'; } |
+    awk -v app="$id" '
+        $1 == "S" { line = substr($0, 3); k = line; sub(/=.*/, "", k); v = substr(line, length(k) + 2)
+            if (match(k, /stats\/[^\/]+\/bits\/[^\/]+\//)) {
+                n = split(k, p, "/"); for (i = 1; i <= n; i++) if (p[i] == "stats") { sid = p[i + 1]; bid = p[i + 3]; rest = ""; for (j = i + 4; j <= n; j++) rest = rest (rest ? "/" : "") p[j]; break }
+                if (rest == "name") nm[sid "." bid] = v
+                else if (rest == "display/name/english") disp[sid "." bid] = v
+                else if (rest == "display/icon") icon[sid "." bid] = v
+                bits[sid "." bid] = 1
+            } }
+        $1 == "U" { line = substr($0, 3); k = line; sub(/=.*/, "", k); v = substr(line, length(k) + 2)
+            n = split(k, p, "/"); if (p[n] == "data" && n >= 2) data[p[n - 1]] = v + 0 }
+        END { for (b in bits) { split(b, q, "."); if ((q[1] in data) && int(data[q[1]] / 2 ^ q[2]) % 2 == 1)
+                printf "%s\t%s\t%s\n", (nm[b] != "" ? nm[b] : b), (disp[b] != "" ? disp[b] : nm[b]),
+                       (icon[b] != "" ? "https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/" app "/" icon[b] : "") } }'
+}
+
+list_all() { { list_steam; list_heroic; list_lutris; } | jq -sc 'map(select(.installed)) | sort_by(.name | ascii_downcase)'; }
+
+case "${1:-list}" in
+    list) list_all ;;
+    running) running ;;
+    willitrun) shift; willitrun "$@" ;;
+    drives) drives ;;
+    achievements) achievements "${2:?app id}" ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

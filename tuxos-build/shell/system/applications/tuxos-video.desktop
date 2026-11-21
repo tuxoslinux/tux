@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Video player
+Name[bg]=Видео плейър
+Comment=Play videos, with subtitles and resume
+Comment[bg]=Пускай видео, със субтитри и продължаване
+Exec=mpv --include=/usr/share/tuxos/mpv/tuxos.conf --player-operation-mode=pseudo-gui -- %U
+Icon=multimedia-video-player
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/ogg;video/x-flv;video/3gpp;application/x-mpegurl;
+Keywords=video;movie;film;player;mpv;
+StartupWMClass=mpv
+NoDisplay=false

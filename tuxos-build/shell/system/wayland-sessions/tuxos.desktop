@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=TuxOS desktop
+Comment=The TuxOS desktop: Hyprland with the TuxOS shell
+Exec=tuxos-session
+Type=Application
+DesktopNames=TuxOS;Hyprland

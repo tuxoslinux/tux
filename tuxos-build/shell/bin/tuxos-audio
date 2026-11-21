@@ -1,0 +1,173 @@
+#!/bin/sh
+# tuxos-audio: TuxOS' sound extras, each a small PipeWire filter chain run as
+# its own PipeWire client (it stops when switched off or at logout).
+#
+#   tuxos-audio noise on|off|status   microphone noise suppression (RNNoise):
+#                                     a virtual microphone "Noise filtered
+#                                     microphone" becomes the default input
+#   tuxos-audio eq bands G1 ... G10   10-band equalizer (31 Hz ... 16 kHz,
+#                                     gains in dB) in front of the speakers /
+#                                     headphones: a virtual output "Equalizer"
+#   tuxos-audio eq autoeq NAME        the AutoEq correction for these
+#                                     headphones (downloaded once, cached)
+#   tuxos-audio eq find WORDS         AutoEq headphone names that match
+#   tuxos-audio eq off|status
+#   tuxos-audio restore               at login: what was on last time
+run="${XDG_RUNTIME_DIR:-/tmp}"
+state="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/audio"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/autoeq"
+mkdir -p "$state"
+
+# the modules every stand-alone PipeWire client needs, then one filter chain
+header() {
+    cat <<'CONF'
+context.properties = { log.level = 0 }
+context.spa-libs = { audio.convert.* = audioconvert/libspa-audioconvert support.* = support/libspa-support }
+context.modules = [
+  { name = libpipewire-module-rt flags = [ ifexists nofail ] }
+  { name = libpipewire-module-protocol-native }
+  { name = libpipewire-module-client-node }
+  { name = libpipewire-module-adapter }
+CONF
+}
+
+# start / stop one chain (pid file per chain; never matches other processes)
+start_chain() { # name conf
+    stop_chain "$1"
+    setsid -f sh -c 'echo $$ > "$1"; exec pipewire -c "$2"' sh "$run/tuxos-$1.pid" "$2" >/dev/null 2>&1
+    sleep 1
+}
+stop_chain() {
+    f="$run/tuxos-$1.pid"
+    [ -s "$f" ] && kill "$(cat "$f")" 2>/dev/null
+    rm -f "$f"
+}
+running() { f="$run/tuxos-$1.pid"; [ -s "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null; }
+# the id of a node by its exact name (wpctl status: "61. tuxos-noise [Audio/Source]")
+node_id() { wpctl status | awk -v n="$1" '{ for (i = 2; i <= NF; i++) if ($i == n && $(i - 1) ~ /^[0-9]+\.$/) { id = $(i - 1); sub(/\./, "", id); print id; exit } }'; }
+
+noise_on() {
+    lib=/usr/lib/ladspa/librnnoise_ladspa.so
+    [ -e "$lib" ] || { notify-send "Noise filter" "Install noise-suppression-for-voice first (TuxOS Store)"; exit 1; }
+    conf="$run/tuxos-noise.conf"
+    { header; cat <<CONF
+  { name = libpipewire-module-filter-chain
+    args = {
+      node.description = "Noise filtered microphone"
+      media.name = "Noise filtered microphone"
+      filter.graph = { nodes = [ { type = ladspa name = rnnoise plugin = "$lib" label = noise_suppressor_mono control = { "VAD Threshold (%)" = 50.0 } } ] }
+      capture.props = { node.name = "capture.tuxos-noise" node.passive = true audio.rate = 48000 audio.position = [ MONO ] }
+      playback.props = { node.name = "tuxos-noise" node.description = "Noise filtered microphone" media.class = Audio/Source audio.rate = 48000 audio.position = [ MONO ] }
+    }
+  }
+]
+CONF
+    } > "$conf"
+    start_chain noise "$conf"
+    id=$(node_id tuxos-noise)
+    [ -n "$id" ] && wpctl set-default "$id"
+    : > "$state/noise"
+}
+
+# ---- equalizer: a list of biquads ("type freq gain q" per line) + preamp
+eq_conf() { # preamp_db < filters
+    conf="$run/tuxos-eq.conf"
+    nodes="" links="" i=0 prev=""
+    while read -r type freq gain q; do
+        [ -n "$type" ] || continue
+        i=$((i + 1))
+        nodes="$nodes { type = builtin name = f$i label = bq_$type control = { \"Freq\" = $freq \"Q\" = $q \"Gain\" = $gain } }"
+        [ -n "$prev" ] && links="$links { output = \"$prev:Out\" input = \"f$i:In\" }"
+        prev="f$i"
+    done
+    # the preamp keeps boosts from clipping (a linear gain)
+    pre=$(awk -v d="$1" 'BEGIN { printf "%.4f", 10 ^ (d / 20) }')
+    i=$((i + 1))
+    nodes="$nodes { type = builtin name = pre label = mixer control = { \"Gain 1\" = $pre } }"
+    [ -n "$prev" ] && links="$links { output = \"$prev:Out\" input = \"pre:In 1\" }"
+    { header; cat <<CONF
+  { name = libpipewire-module-filter-chain
+    args = {
+      node.description = "Equalizer"
+      media.name = "Equalizer"
+      filter.graph = { nodes = [ $nodes ] links = [ $links ] }
+      audio.channels = 2
+      audio.position = [ FL FR ]
+      capture.props = { node.name = "tuxos-eq" node.description = "Equalizer" media.class = Audio/Sink }
+      playback.props = { node.name = "playback.tuxos-eq" node.passive = true }
+    }
+  }
+]
+CONF
+    } > "$conf"
+    start_chain eq "$conf"
+    id=$(node_id tuxos-eq)
+    [ -n "$id" ] && wpctl set-default "$id"
+}
+
+eq_bands() { # 10 gains in dB
+    [ $# -eq 10 ] || { echo "tuxos-audio eq bands: 10 gains" >&2; exit 2; }
+    max=0
+    for g in "$@"; do max=$(awk -v a="$max" -v b="$g" 'BEGIN { print (b > a) ? b : a }'); done
+    set -- 31 "$1" 62 "$2" 125 "$3" 250 "$4" 500 "$5" 1000 "$6" 2000 "$7" 4000 "$8" 8000 "$9" 16000 "${10}"
+    {
+        while [ $# -gt 1 ]; do
+            t=peaking; [ "$1" = 31 ] && t=lowshelf; [ "$1" = 16000 ] && t=highshelf
+            echo "$t $1 $2 1.41"; shift 2
+        done
+    } | eq_conf "-$max"
+}
+
+autoeq_index() {
+    mkdir -p "$cache"
+    idx="$cache/INDEX.md"
+    if [ ! -s "$idx" ] || [ $(( $(date +%s) - $(stat -c %Y "$idx") )) -gt 2592000 ]; then
+        curl -fsL --max-time 20 https://raw.githubusercontent.com/jaakkopasanen/AutoEq/master/results/INDEX.md -o "$idx.new" && mv "$idx.new" "$idx"
+        rm -f "$idx.new"
+    fi
+    [ -s "$idx" ]
+}
+# "- [Name](./path/to/Name) by source" -> "Name<TAB>path"
+autoeq_list() { sed -n 's/^- \[\(.*\)\](\.\/\(.*\)) by .*/\1\t\2/p' "$cache/INDEX.md"; }
+autoeq_find() { # words: every word must appear (any case)
+    autoeq_index || exit 1
+    autoeq_list | awk -F '\t' -v q="$*" 'BEGIN { n = split(tolower(q), w, /[ _-]+/) }
+        { l = tolower($1); ok = 1; for (i = 1; i <= n; i++) if (w[i] != "" && index(l, w[i]) == 0) ok = 0; if (ok && !seen[$1]++) print $1 }' | head -20
+}
+autoeq_apply() { # exact name
+    autoeq_index || { notify-send "Equalizer" "AutoEq needs the internet once for these headphones"; exit 1; }
+    path=$(autoeq_list | awk -F '\t' -v n="$1" '$1 == n { print $2; exit }')
+    [ -n "$path" ] || { echo "not in AutoEq: $1" >&2; exit 1; }
+    f="$cache/$(echo "$1" | tr '/' '_').txt"
+    if [ ! -s "$f" ]; then
+        url="https://raw.githubusercontent.com/jaakkopasanen/AutoEq/master/results/$(printf '%s' "$path/$1 ParametricEQ.txt" | sed 's/ /%20/g')"
+        curl -fsL --max-time 20 "$url" -o "$f.new" && mv "$f.new" "$f" || { rm -f "$f.new"; exit 1; }
+    fi
+    pre=$(sed -n 's/^Preamp: \(-\{0,1\}[0-9.]*\) dB.*/\1/p' "$f" | head -1)
+    # "Filter 1: ON PK Fc 105 Hz Gain -2.6 dB Q 0.70" (PK, LSC, HSC)
+    sed -n 's/^Filter [0-9]*: ON \(PK\|LSC\|HSC\) Fc \([0-9.]*\) Hz Gain \(-\{0,1\}[0-9.]*\) dB Q \([0-9.]*\).*/\1 \2 \3 \4/p' "$f" |
+        sed 's/^PK /peaking /; s/^LSC /lowshelf /; s/^HSC /highshelf /' | eq_conf "${pre:-0}"
+}
+
+case "$1 $2" in
+    "noise on") noise_on ;;
+    "noise off") stop_chain noise; rm -f "$state/noise" ;;
+    "noise status") running noise && echo on || echo off ;;
+    "eq bands") shift 2; eq_bands "$@"; printf 'bands %s\n' "$*" > "$state/eq" ;;
+    "eq autoeq") shift 2; autoeq_apply "$*" && printf 'autoeq %s\n' "$*" > "$state/eq" ;;
+    "eq find") shift 2; autoeq_find "$*" ;;
+    "eq off") stop_chain eq; rm -f "$state/eq" ;;
+    "eq status") running eq && cat "$state/eq" 2>/dev/null || echo off ;;
+    "restore "*)
+        [ -e "$state/noise" ] && noise_on
+        if [ -s "$state/eq" ]; then
+            read -r kind rest < "$state/eq"
+            case "$kind" in
+                bands) # shellcheck disable=SC2086
+                       eq_bands $rest ;;
+                autoeq) autoeq_apply "$rest" ;;
+            esac
+        fi
+        ;;
+    *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

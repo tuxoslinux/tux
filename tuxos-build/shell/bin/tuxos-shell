@@ -1,0 +1,75 @@
+#!/bin/sh
+# tuxos-shell: starts the TuxOS desktop shell (Quickshell config "tuxos")
+# and keeps it running (SPEC safety net): if it stops for any reason it is
+# back within about a second; apps keep running. Super + R ends the shell
+# process on purpose to restart it.
+# Rollback of a broken shell update: a shell version that ran for 2 minutes
+# is kept as the last good one (~/.local/share/tuxos/shell-good). When an
+# updated shell stops 3 times within 30 s, the last good one starts instead
+# (through ~/.config/quickshell/tuxos, a link) with a notification; the next
+# shell update is tried again. Five stops within 30 s with nothing to go
+# back to end the loop with a message (Hyprland's own keys still work).
+# To stop it for good: touch "$XDG_RUNTIME_DIR/tuxos-shell.stop".
+stop="${XDG_RUNTIME_DIR:-/tmp}/tuxos-shell.stop"
+# the shell's messages, in RAM (cleared at logout)
+exec >"${XDG_RUNTIME_DIR:-/tmp}/tuxos-shell.log" 2>&1
+rm -f "$stop"
+# no Quickshell crash dialog: a password check runs in a forked helper that
+# Quickshell 0.3.2 sometimes sees crash on its way out (the shell itself keeps
+# running); real shell crashes are restarted by this loop and logged here
+export QS_DISABLE_CRASH_HANDLER=1
+
+sys=/etc/xdg/quickshell/tuxos
+user="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/tuxos"
+data="${XDG_DATA_HOME:-$HOME/.local/share}/tuxos"
+good="$data/shell-good"
+bad="$data/shell-bad"
+ver() { cat "$1/VERSION" 2>/dev/null; }
+
+# rolled back earlier and the system has a newer shell now: try it
+if [ -L "$user" ] && [ "$(cat "$bad" 2>/dev/null)" != "$(ver "$sys")" ]; then
+    rm -f "$user" "$bad"
+fi
+
+# the shell that runs (a real ~/.config/quickshell/tuxos is a developer's own copy)
+running() { if [ -L "$user" ]; then readlink -f "$user"; elif [ -d "$user" ]; then echo "$user"; else echo "$sys"; fi; }
+keep_good() {
+    src=$(running)
+    [ -L "$user" ] && return 0
+    [ -n "$(ver "$src")" ] && [ "$(ver "$src")" != "$(ver "$good")" ] || return 0
+    mkdir -p "$data" && rm -rf "$good.new" && cp -a "$src" "$good.new" && rm -rf "$good" && mv "$good.new" "$good"
+}
+
+crashes=0
+first=$(date +%s)
+while :; do
+    qs -c tuxos "$@" &
+    pid=$!
+    # ran for 2 minutes: this version is good
+    ( sleep 120; kill -0 "$pid" 2>/dev/null && keep_good ) &
+    keeper=$!
+    wait "$pid"
+    code=$?
+    kill "$keeper" 2>/dev/null
+    [ -e "$stop" ] && exit 0
+    now=$(date +%s)
+    if [ $((now - first)) -gt 30 ]; then crashes=0; first=$now; fi
+    crashes=$((crashes + 1))
+    echo "tuxos-shell: shell exited with code $code; restart $crashes" >&2
+    # an update that keeps stopping: back to the last good version
+    if [ "$crashes" -ge 3 ] && [ ! -e "$user" ] && [ -f "$good/shell.qml" ] && [ "$(ver "$good")" != "$(ver "$sys")" ]; then
+        mkdir -p "$(dirname "$user")"
+        ln -s "$good" "$user"
+        ver "$sys" > "$bad"
+        echo "tuxos-shell: went back to the shell from $(ver "$good")" >&2
+        ( sleep 4; notify-send -u normal -i dialog-warning "TuxOS went back to the previous shell" \
+            "The updated shell kept stopping, so the last version that worked is running. The next update will be tried again." ) 2>/dev/null &
+        crashes=0; first=$now
+        continue
+    fi
+    if [ "$crashes" -ge 5 ]; then
+        notify-send -u critical "TuxOS shell stopped" "It stopped 5 times in 30 s. Run 'tuxos-shell &' in a terminal to start it again." 2>/dev/null
+        exit 1
+    fi
+    sleep 0.3
+done

@@ -1,0 +1,17 @@
+#!/bin/bash
+# A `sudo` for build.sh (tools/asroot --build): sends the command to
+# tools/root-helper instead of asking for a password. Understands the plain
+# `sudo CMD ...` form plus -n/-E/-H (ignored) and -u USER.
+here="$(cd "$(dirname "$0")/.." && pwd)"
+as=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n|-E|-H|--preserve-env) shift ;;
+        -u) as="$2"; shift 2 ;;
+        --) shift; break ;;
+        -*) echo "sudo-shim: option $1 not supported" >&2; exit 1 ;;
+        *) break ;;
+    esac
+done
+[ -n "$as" ] && [ "$as" != root ] && exec "$here/asroot" runuser -u "$as" -- "$@"
+exec "$here/asroot" "$@"

@@ -1,0 +1,134 @@
+#!/bin/bash
+# tuxos-secureboot: Secure Boot for TuxOS (SPEC round 7 #16), so dual-boot
+# users can keep it on for Windows games whose anti-cheat needs it.
+# The boot path: the firmware -> shim (signed by Microsoft, from
+# shim-signed) -> GRUB signed with this PC's own TuxOS key -> the kernel
+# signed with the same key. The key is enrolled once: at the next start the
+# firmware's blue "MokManager" screen asks for a one-time password.
+#   tuxos-secureboot status   (any user) "sb on|off|none" (none: BIOS / no
+#                             Secure Boot), "mok enrolled|pending|none",
+#                             "shim yes|no"
+#   tuxos-secureboot enable   (root) make the key (if there is none), put
+#                             shim + signed GRUB on the EFI partition as the
+#                             first boot entry, sign the kernels, ask the
+#                             firmware to enroll the key; prints the one-time
+#                             password for the MokManager screen
+#   tuxos-secureboot sign     (root; pacman hook) sign new kernels / GRUB again
+#   tuxos-secureboot disable  (root) back to plain GRUB as the first entry
+# Keys: /etc/tuxos/secureboot (root only). Kernel modules need no signature
+# (the kernel does not enforce them); NVIDIA's driver keeps working.
+set -u
+keydir=/etc/tuxos/secureboot
+key="$keydir/MOK.key" crt="$keydir/MOK.crt" der="$keydir/MOK.cer"
+# the public certificate, readable by everyone (status as a normal user)
+pub=/var/lib/tuxos/secureboot-key.cer pending=/var/lib/tuxos/secureboot-pending
+id=TuxOS
+mods="all_video boot btrfs cat chain configfile cpuid cryptodisk echo efi_gop efifwsetup efinet ext2 f2fs fat font gcry_rijndael gcry_sha256 gcry_sha512
+      gettext gfxmenu gfxterm gfxterm_background gzio halt help iso9660 jpeg keystatus linux loadenv loopback ls lsefi luks luks2 lvm memdisk minicmd normal
+      ntfs part_gpt part_msdos password_pbkdf2 pbkdf2 png probe reboot regexp search search_fs_file search_fs_uuid search_label sleep smbios squash4
+      test tpm true video xfs zstd"
+
+die() { echo "tuxos-secureboot: $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" = 0 ] || die "needs administrator rights"; }
+esp() { findmnt -no TARGET /boot/efi 2>/dev/null || findmnt -no TARGET /efi 2>/dev/null; }
+efivars() { [ -d /sys/firmware/efi/efivars ]; }
+
+sb_state() {
+    efivars || { echo none; return; }
+    case "$(mokutil --sb-state 2>/dev/null)" in *"SecureBoot enabled"*) echo on ;; *) echo off ;; esac
+}
+mok_state() {
+    [ -e "$pub" ] || { echo none; return; }
+    if mokutil --test-key "$pub" 2>/dev/null | grep -q "already enrolled"; then echo enrolled
+    elif [ -e "$pending" ]; then echo pending
+    else echo none; fi
+}
+
+make_key() {
+    [ -s "$key" ] && [ -s "$crt" ] && { [ -e "$pub" ] || install -D -m 644 "$der" "$pub"; return 0; }
+    install -d -m 700 "$keydir"
+    openssl req -new -x509 -newkey rsa:2048 -nodes -days 36500 -sha256 -subj "/CN=TuxOS Secure Boot key ($(cat /etc/hostname 2>/dev/null))/" \
+        -keyout "$key" -out "$crt" >/dev/null 2>&1 || die "could not make the key"
+    openssl x509 -in "$crt" -outform DER -out "$der"
+    chmod 600 "$key"
+    install -D -m 644 "$der" "$pub"
+}
+
+sign_file() { # a file signed in place (once)
+    local f="$1"
+    [ -f "$f" ] || return 0
+    sbverify --cert "$crt" "$f" >/dev/null 2>&1 && return 0
+    sbsign --key "$key" --cert "$crt" --output "$f.signed" "$f" >/dev/null 2>&1 && mv -f "$f.signed" "$f"
+}
+
+install_grub() { # GRUB with every module it needs inside (Secure Boot stops loading others)
+    local e; e=$(esp) || die "no EFI partition mounted"
+    # shellcheck disable=SC2086
+    grub-install --target=x86_64-efi --efi-directory="$e" --bootloader-id="$id" --no-nvram \
+        --modules="$(echo $mods)" --sbat /usr/share/grub/sbat.csv >/dev/null 2>&1 || die "grub-install failed"
+    sign_file "$e/EFI/$id/grubx64.efi"
+    cp -f /usr/share/shim-signed/shimx64.efi "$e/EFI/$id/shimx64.efi"
+    cp -f /usr/share/shim-signed/mmx64.efi "$e/EFI/$id/mmx64.efi"
+    # the public key where MokManager can find it ("Enroll key from disk"),
+    # for firmware that drops the enrollment request
+    cp -f "$der" "$e/EFI/$id/TuxOS-key.cer"
+    # the firmware's fallback path too (some boards ignore boot entries)
+    install -d "$e/EFI/BOOT"
+    cp -f "$e/EFI/$id/shimx64.efi" "$e/EFI/BOOT/BOOTX64.EFI"
+    cp -f "$e/EFI/$id/grubx64.efi" "$e/EFI/BOOT/grubx64.efi"
+    cp -f "$e/EFI/$id/mmx64.efi" "$e/EFI/BOOT/mmx64.efi"
+}
+
+boot_entry() { # shim first in the boot order
+    local e part disk num
+    e=$(esp); part=$(findmnt -no SOURCE "$e")
+    disk="/dev/$(lsblk -no PKNAME "$part" | head -1)"; num=$(cat "/sys/class/block/$(basename "$part")/partition")
+    efibootmgr | sed -n "s/^Boot\([0-9A-F]\{4\}\)\*\? $id (Secure Boot).*/\1/p" | while read -r n; do efibootmgr -q -b "$n" -B; done
+    efibootmgr -q -c -d "$disk" -p "$num" -L "$id (Secure Boot)" -l "\\EFI\\$id\\shimx64.efi" || die "could not add the boot entry"
+}
+
+sign_kernels() { for k in /boot/vmlinuz-*; do sign_file "$k"; done; }
+
+case "${1:-}" in
+    status)
+        echo "sb $(sb_state)"; echo "mok $(mok_state)"
+        e=$(esp); [ -n "$e" ] && [ -e "$e/EFI/$id/shimx64.efi" ] && echo "shim yes" || echo "shim no" ;;
+    enable)
+        need_root
+        efivars || die "this PC starts in BIOS mode: Secure Boot needs UEFI"
+        [ -e /usr/share/shim-signed/shimx64.efi ] || pacman -S --needed --noconfirm shim-signed sbsigntools mokutil >/dev/null 2>&1 || die "could not install shim-signed"
+        make_key
+        install_grub
+        # TPM unlock on: its GRUB (with the TPM step) replaces the plain one
+        [ -e /var/lib/tuxos/tpm-enabled ] && tuxos-tpm image
+        sign_kernels
+        boot_entry
+        if [ "$(mok_state)" != enrolled ]; then
+            pw=$(tr -dc 0-9 < /dev/urandom | head -c 8)
+            # mokutil reads a typed password only from a terminal: a hash of it instead
+            hashf="$keydir/import-hash"
+            mokutil --generate-hash="$pw" > "$hashf" 2>/dev/null
+            mokutil --import "$der" --hash-file "$hashf" >/dev/null 2>&1 || die "the firmware did not take the key"
+            : > "$hashf"
+            : > "$pending"
+            echo "password $pw"
+        fi
+        echo ok ;;
+    sign)
+        need_root
+        [ -s "$key" ] || exit 0
+        sign_kernels
+        e=$(esp); [ -n "$e" ] && [ -e "$e/EFI/$id/shimx64.efi" ] && sign_file "$e/EFI/$id/grubx64.efi" && sign_file "$e/EFI/BOOT/grubx64.efi"
+        [ "$(mok_state)" = enrolled ] && rm -f "$pending"
+        exit 0 ;;
+    disable)
+        need_root
+        e=$(esp) || die "no EFI partition mounted"
+        grub-install --target=x86_64-efi --efi-directory="$e" --bootloader-id="$id" >/dev/null 2>&1 || die "grub-install failed"
+        [ -e /var/lib/tuxos/tpm-enabled ] && tuxos-tpm image
+        efibootmgr | sed -n "s/^Boot\([0-9A-F]\{4\}\)\*\? $id (Secure Boot).*/\1/p" | while read -r n; do efibootmgr -q -b "$n" -B; done
+        rm -f "$e/EFI/$id/shimx64.efi" "$e/EFI/$id/mmx64.efi" "$pending"
+        cp -f "$e/EFI/$id/grubx64.efi" "$e/EFI/BOOT/BOOTX64.EFI" 2>/dev/null
+        echo ok ;;
+    *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

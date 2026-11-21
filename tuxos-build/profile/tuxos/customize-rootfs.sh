@@ -20,7 +20,7 @@ cp /usr/share/pixmaps/tuxos-logo.png /usr/share/pixmaps/artixlinux-logo.png
 rm -f /etc/arch-release
 
 # Performance layer (see /etc/tuxos/performance.conf, tuxos-tune status)
-for service in tuxos-zram tuxos-tweaks tuxos-gamed tuxos-bootok ananicy-cpp scx_loader power-profiles-daemon earlyoom; do
+for service in tuxos-zram tuxos-tweaks tuxos-gamed tuxos-bootok tuxos-tpm tuxos-power tuxos-fan ananicy-cpp scx_loader power-profiles-daemon earlyoom; do
     if [[ ! -f "/etc/dinit.d/${service}" ]]; then
         echo "customize-rootfs: missing dinit service ${service}" >&2
         exit 1

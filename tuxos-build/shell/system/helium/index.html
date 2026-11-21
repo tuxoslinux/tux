@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New tab</title>
+<style>
+  :root { --accent: #8fb8ff; --text: #f4f7fb; --muted: #8b95a5; --glass: rgba(10, 12, 16, 0.55); --line: rgba(210, 225, 255, 0.10); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0d11; color: var(--text); font-family: "Adwaita Sans", "Inter", system-ui, sans-serif; }
+  body { background: #0b0d11 url("/usr/share/backgrounds/tuxos/tuxos-wallpaper.jpg") center / cover no-repeat; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  body::before { content: ""; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); }
+  main { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: -8vh; width: min(640px, 100% - 32px); }
+  .time { font-size: clamp(64px, 12vw, 128px); font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+  .time b { color: var(--accent); font-weight: 700; }
+  .hello { color: #dce3ee; font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  form { width: 100%; display: flex; align-items: center; gap: 12px; height: 58px; padding: 0 18px; border-radius: 18px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(24px); }
+  form:focus-within { border-color: rgba(143, 184, 255, 0.45); }
+  svg { flex: none; }
+  input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: inherit; font-size: 19px; }
+  input::placeholder { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="time" id="time">00<b>:</b>00</div>
+  <div class="hello" id="hello">Good day</div>
+  <form action="https://duckduckgo.com/" method="get" autocomplete="off">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="#8fb8ff" aria-hidden="true"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.6-.6 3.1-1.6 4.2l.3.3h.8l5 5-1.5 1.5-5-5v-.8l-.3-.3A6.5 6.5 0 1 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+    <input name="q" placeholder="Search the web" autofocus aria-label="Search the web">
+  </form>
+</main>
+<script>
+  // a plain local page (TuxOS' new tab): the time and a greeting, no tracking
+  function tick() {
+    const d = new Date(), h = String(d.getHours()).padStart(2, "0"), m = String(d.getMinutes()).padStart(2, "0");
+    document.getElementById("time").innerHTML = `${h}<b>:</b>${m}`;
+    const H = d.getHours();
+    document.getElementById("hello").textContent = H < 5 ? "Good night" : H < 12 ? "Good morning" : H < 18 ? "Good day" : "Good evening";
+  }
+  tick(); setInterval(tick, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+#!/bin/bash
+# tuxos-dev: developer mode (SPEC round 6 #24) and Distrobox (round 6 #20).
+#   tuxos-dev status              "tools 0/1", "git NAME|EMAIL", "ssh KEYFILE|",
+#                                 "podman 0/1", "distrobox 0/1"
+#   tuxos-dev tools               install the tools (pkexec tuxos-pkg): base-devel,
+#                                 git, Code - OSS, podman, distrobox
+#   tuxos-dev git NAME EMAIL      set git's name and e-mail
+#   tuxos-dev ssh                 make an SSH key (ed25519) if there is none;
+#                                 prints the public key
+#   tuxos-dev boxes               "name|image|status" per Distrobox box
+#   tuxos-dev create NAME IMAGE   make a box (in a terminal: it downloads)
+#   tuxos-dev apps NAME           "file|name" of the apps inside a box
+#   tuxos-dev export NAME FILE    put a box's app in the launcher (and
+#                                 tuxos-dev unexport NAME FILE takes it out)
+#   tuxos-dev remove NAME         delete a box
+set -u
+tools="base-devel git code podman distrobox"
+case "${1:-}" in
+    status)
+        all=1; for p in $tools; do pacman -Q "$p" >/dev/null 2>&1 || pacman -Qg "$p" >/dev/null 2>&1 || all=0; done
+        echo "tools $all"
+        echo "git $(git config --global user.name 2>/dev/null)|$(git config --global user.email 2>/dev/null)"
+        k=""; for f in ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub ~/.ssh/id_ecdsa.pub; do [ -e "$f" ] && { k="$f"; break; }; done
+        echo "ssh $k"
+        echo "podman $(command -v podman >/dev/null && echo 1 || echo 0)"
+        echo "distrobox $(command -v distrobox >/dev/null && echo 1 || echo 0)" ;;
+    tools) pkexec tuxos-pkg install $tools ;;
+    git) git config --global user.name "${2:?name}" && git config --global user.email "${3:?email}" ;;
+    ssh)
+        f=~/.ssh/id_ed25519
+        [ -e "$f" ] || { mkdir -p ~/.ssh && chmod 700 ~/.ssh && ssh-keygen -q -t ed25519 -N "" -C "$(id -un)@$(cat /etc/hostname 2>/dev/null)" -f "$f"; }
+        cat "$f.pub" ;;
+    boxes) distrobox list --no-color 2>/dev/null | tail -n +2 | awk -F'|' '{ gsub(/^ +| +$/, "", $2); gsub(/^ +| +$/, "", $3); gsub(/^ +| +$/, "", $4); print $2 "|" $4 "|" $3 }' ;;
+    create)
+        n="${2:?name}"; img="${3:?image}"
+        kitty --title "New box: $n" sh -c 'distrobox create --yes --name "$1" --image "$2" && distrobox enter "$1" -- true; echo; read -r -p "Done. Enter closes this window. " x' sh "$n" "$img" ;;
+    apps)
+        distrobox enter "${2:?box}" -- sh -c 'for f in /usr/share/applications/*.desktop; do grep -q "^NoDisplay=true" "$f" && continue; n=$(sed -n "s/^Name=//p" "$f" | head -1); echo "$(basename "$f" .desktop)|$n"; done' 2>/dev/null ;;
+    export) distrobox enter "${2:?box}" -- distrobox-export --app "${3:?app}" >/dev/null 2>&1 ;;
+    unexport) distrobox enter "${2:?box}" -- distrobox-export --app "${3:?app}" --delete >/dev/null 2>&1 ;;
+    remove) distrobox rm --force "${2:?box}" ;;
+    *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Documents
+Name[bg]=Документи
+Comment=Read PDF files
+Comment[bg]=Чети PDF файлове
+Exec=tuxos-app documents --page %u
+Icon=x-office-document
+Categories=Office;Viewer;
+MimeType=application/pdf;
+Keywords=pdf;document;reader;viewer;
+StartupWMClass=tuxos-documents

@@ -1,0 +1,9 @@
+#!/bin/sh
+# installer-no-hyprland [CONF]: the live session could not start Hyprland
+# on this PC's graphics (tuxos-session), so the installer's Desktop page
+# chooses XFCE and its TuxOS entry says why (run by run-installer as root).
+c="${1:-/etc/calamares/modules/packagechooser_desktop.conf}"
+grep -q "cannot run on this" "$c" && exit 0
+note="This PC's graphics cannot run the TuxOS desktop (it needs OpenGL ES 3), so XFCE is chosen: it works on any graphics. "
+sed -i -e 's/^default: tuxos$/default: xfce/' \
+    -e "/^    - id: tuxos\$/,/description:/ s|description: \"|description: \"$note|" "$c"

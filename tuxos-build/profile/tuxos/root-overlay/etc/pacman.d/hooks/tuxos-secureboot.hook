@@ -1,0 +1,15 @@
+# Secure Boot (tuxos-secureboot): a new kernel or GRUB is signed with this
+# PC's TuxOS key, else the next start would stop at the firmware. Does
+# nothing when Secure Boot was never set up.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/lib/modules/*/vmlinuz
+Target = boot/vmlinuz-*
+Target = usr/lib/grub/x86_64-efi/*
+
+[Action]
+Description = Signing the kernel for Secure Boot...
+When = PostTransaction
+Exec = /usr/bin/tuxos-secureboot sign

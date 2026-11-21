@@ -1,0 +1,11 @@
+#!/bin/sh
+# tuxos-sharepicker: TuxOS' screen-share picker for xdg-desktop-portal-hyprland
+# (screencopy:custom_picker_binary in ~/.config/hypr/xdph.conf). Prints the
+# choice as the portal expects ("[SELECTION]r/screen:DP-1", "/window:123");
+# nothing when cancelled.
+out=$(mktemp)
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/tuxos"
+[ -e "$cfg/app-sharepicker.qml" ] || cfg=/etc/xdg/quickshell/tuxos
+TUXOS_PICK_OUT="$out" QS_APP_ID=tuxos-sharepicker qs -p "$cfg/app-sharepicker.qml" >/dev/null 2>&1
+cat "$out"
+rm -f "$out"

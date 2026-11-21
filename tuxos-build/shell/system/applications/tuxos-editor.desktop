@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Text editor
+Name[bg]=Текстов редактор
+Comment=Notes and code with syntax colours
+Comment[bg]=Бележки и код с оцветяване
+Exec=tuxos-app editor --page %u
+Icon=accessories-text-editor
+Categories=Utility;TextEditor;Development;
+MimeType=text/plain;text/markdown;text/x-csrc;text/x-chdr;text/x-c++src;text/x-python;text/x-shellscript;application/x-shellscript;application/json;application/toml;application/x-yaml;text/x-log;application/xml;text/html;text/css;application/javascript;
+Keywords=text;edit;notes;code;markdown;
+StartupWMClass=tuxos-editor

@@ -1,0 +1,6 @@
+# TuxOS: disk encryption made GRUB-readable LUKS2, plus a recovery key
+---
+type:       "job"
+name:       "tuxoscrypt"
+interface:  "python"
+script:     "main.py"

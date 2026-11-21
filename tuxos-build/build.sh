@@ -40,9 +40,17 @@ echo "==> This build: ${out_dir}/${build_dir}/${build_name}"
 echo "==> Generating artwork"
 "${here}/branding/make-assets.sh"
 
+echo "==> Packaging the TuxOS desktop (shell, login screen, apps)"
+shell_root="$(mktemp -d)"
+trap 'rm -rf "${shell_root}"' EXIT
+"${here}/shell/package.sh" "${shell_root}/root"
+
 echo "==> Installing profile into the build chroot"
 sudo rm -rf "${workspace}/iso-profiles/tuxos"
 sudo cp -r "${here}/profile/tuxos" "${workspace}/iso-profiles/tuxos"
+# the installer copies this tree into the new system for "TuxOS desktop"
+sudo mkdir -p "${workspace}/iso-profiles/tuxos/live-overlay/usr/share/tuxos/desktop/tuxos"
+sudo cp -a "${shell_root}/root" "${workspace}/iso-profiles/tuxos/live-overlay/usr/share/tuxos/desktop/tuxos/root"
 sudo chown -R root:root "${workspace}/iso-profiles/tuxos"
 sudo chmod -R go+rX,go-w "${workspace}/iso-profiles/tuxos"
 # wildcards under the chroot's /root are expanded as root: that folder is

@@ -1,0 +1,40 @@
+#!/bin/sh
+# tuxos-music-scan : lists the songs under ~/Music (and $XDG_MUSIC_DIR) for
+# TuxOS Music as JSON lines {path, title, artist, album, genre, track,
+# duration, cover}. Tags come from ffprobe and are cached by path + mtime in
+# ~/.cache/tuxos/music/tags.tsv, so only new or changed files are read.
+# Covers: the folder's cover.jpg / folder.jpg / front.jpg, else the picture
+# inside the first song of the album (extracted once to the cache).
+music="${XDG_MUSIC_DIR:-$HOME/Music}"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/music"
+mkdir -p "$cache/covers"
+tags="$cache/tags.tsv"; touch "$tags"
+new="$cache/tags.new"; : > "$new"
+find "$music" -type f \( -iname '*.mp3' -o -iname '*.flac' -o -iname '*.ogg' -o -iname '*.opus' -o -iname '*.m4a' -o -iname '*.wav' -o -iname '*.aac' -o -iname '*.wma' \) 2>/dev/null | sort |
+while IFS= read -r f; do
+    m=$(stat -c %Y -- "$f" 2>/dev/null)
+    line=$(awk -F'\t' -v p="$f" -v m="$m" '$1 == p && $2 == m { print; exit }' "$tags")
+    if [ -z "$line" ]; then
+        j=$(ffprobe -v quiet -show_entries 'format=duration:format_tags=title,artist,album,genre,track' -of json -- "$f")
+        line=$(printf '%s' "$j" | jq -r --arg p "$f" --arg m "$m" '[$p, $m,
+            (.format.tags | (.title // .TITLE // "")), (.format.tags | (.artist // .ARTIST // "")),
+            (.format.tags | (.album // .ALBUM // "")), (.format.tags | (.genre // .GENRE // "")),
+            (.format.tags | (.track // .TRACK // "0") | tostring | split("/")[0]), (.format.duration // "0")] | @tsv')
+    fi
+    printf '%s\n' "$line" >> "$new"
+done
+mv "$new" "$tags"
+# JSON lines, with a cover for each album
+awk -F'\t' '{ print }' "$tags" | while IFS='	' read -r p m title artist album genre track dur; do
+    dir=$(dirname -- "$p")
+    cover=""
+    for c in cover.jpg cover.png folder.jpg folder.png front.jpg Cover.jpg Folder.jpg; do [ -f "$dir/$c" ] && { cover="$dir/$c"; break; }; done
+    if [ -z "$cover" ]; then
+        key=$(printf '%s|%s' "${artist}" "${album:-$dir}" | md5sum | cut -c1-16)
+        cover="$cache/covers/$key.jpg"
+        [ -f "$cover" ] || [ -f "$cover.none" ] || ffmpeg -v quiet -y -i "$p" -an -frames:v 1 -vf scale=480:-1 "$cover" 2>/dev/null || touch "$cover.none"
+        [ -f "$cover" ] || cover=""
+    fi
+    jq -cn --arg path "$p" --arg title "$title" --arg artist "$artist" --arg album "$album" --arg genre "$genre" --arg track "$track" --arg dur "$dur" --arg cover "$cover" \
+        '{path: $path, title: $title, artist: $artist, album: $album, genre: $genre, track: ($track | tonumber? // 0), duration: ($dur | tonumber? // 0), cover: $cover}'
+done

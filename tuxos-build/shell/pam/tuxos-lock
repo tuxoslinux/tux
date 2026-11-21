@@ -1,0 +1,5 @@
+#%PAM-1.0
+# TuxOS lock screen: the user's password. (The fingerprint runs at the same
+# time through its own stack, tuxos-fingerprint, so neither waits for the other.)
+auth      include   system-auth
+account   include   system-auth

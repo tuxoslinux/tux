@@ -1,0 +1,7 @@
+# LACT GPU control daemon (Settings > Gaming > GPU tuning), when LACT is
+# installed; TuxOS Settings enables it on first use (dinitctl enable lactd)
+type            = process
+command         = /usr/bin/lact daemon
+depends-on      = local.target
+smooth-recovery = true
+logfile         = /var/log/dinit/lactd.log

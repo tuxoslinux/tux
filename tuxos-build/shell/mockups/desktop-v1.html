@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TuxOS desktop v1</title>
+<style>
+:root {
+  --accent: #8fb8ff;
+  --text: #f4f7fb;
+  --muted: #8b95a5;
+  --dim: #4c5463;
+  --line: rgba(200, 220, 255, 0.10);
+  --ui: "Adwaita Sans", "Noto Sans", sans-serif;
+  --mono: "JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--ui); color: var(--text); }
+.bg { position: absolute; inset: 0; background: url("wallpaper.png") center / cover; }
+
+.bar {
+  position: absolute; left: 12px; right: 12px; top: 10px; height: 46px;
+  border-radius: 16px;
+  background: rgba(10, 12, 16, 0.55);
+  border: 1px solid rgba(210, 225, 255, 0.09);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.035);
+  backdrop-filter: blur(30px);
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px;
+}
+.left, .right { display: flex; align-items: center; gap: 6px; }
+.right { justify-content: flex-end; }
+
+.logo { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; }
+.logo img { width: 22px; }
+
+.ws { display: flex; align-items: center; gap: 4px; margin-left: 6px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.04); }
+.ws span {
+  width: 30px; height: 26px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 13px; font-weight: 600; color: var(--dim);
+}
+.ws span.used { color: var(--text); }
+.ws span.on { width: 44px; background: var(--accent); color: #0b1424; }
+
+.clock { font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
+.clock span { color: var(--muted); font-weight: 500; margin-left: 10px; }
+
+.right i {
+  font-style: normal; font-family: var(--mono); font-size: 16px; color: var(--text);
+  height: 34px; min-width: 34px; display: grid; place-items: center; border-radius: 11px;
+}
+.right .group { display: flex; align-items: center; gap: 2px; padding: 0 6px; height: 34px; border-radius: 11px; background: rgba(255,255,255,0.04); }
+.right .group i { min-width: 28px; }
+.right .bat { font-size: 13px; color: var(--muted); margin-right: 6px; font-weight: 500; }
+.right .pw { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="bar">
+  <div class="left">
+    <div class="logo"><img src="../../branding/out/pixmaps/tuxos-logo.png" alt=""></div>
+    <div class="ws"><span class="used">1</span><span class="on">2</span><span class="used">3</span><span>4</span><span>5</span></div>
+  </div>
+  <div class="clock">18:07<span>Fri 7 Nov</span></div>
+  <div class="right">
+    <i>&#xf0297;</i>
+    <div class="group"><i>&#xf05a9;</i><i>&#xf057e;</i><i>&#xf0079;</i><span class="bat">100%</span></div>
+    <i class="pw">&#xf011;</i>
+  </div>
+</div>
+</body>
+</html>

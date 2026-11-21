@@ -1,8 +1,9 @@
 ---
 # TuxOS live ISO.
 # rootfs  = the base system Calamares installs (same package set as build2).
-# livefs  = live-only layer: the COSMIC desktop (SDDM autologin as
-#           the live user) and Calamares, started as "Install TuxOS". The
+# livefs  = live-only layer: the TuxOS desktop (Hyprland + the TuxOS
+#           shell; greetd logs the live user in) and Calamares, started as
+#           "Install TuxOS". The
 #           desktops offered on the "Desktop" page are downloaded during
 #           the installation (lists in live-overlay/usr/share/tuxos/desktop/
 #           packages/).
@@ -32,6 +33,11 @@ rootfs:
     - cachyos-keyring
     - cachyos-mirrorlist
     - yay
+    # the fastest mirrors, ranked monthly (tuxos-mirrors)
+    - rate-mirrors
+    # Secure Boot status and signing (tuxos-secureboot; shim-signed comes when it is set up)
+    - mokutil
+    - sbsigntools
     - fastfetch
     # performance layer (/etc/tuxos/performance.conf): process priorities,
     # sched-ext CPU schedulers for game mode, PCI and disk tweaks
@@ -65,16 +71,30 @@ livefs:
     - calamares-extensions
     - breeze
     - breeze-icons
-    # live desktop: COSMIC (Wayland, stock look), autologin through SDDM;
-    # Calamares runs through XWayland. COSMIC needs a Vulkan driver: the
-    # software one, or pacman would pick an NVIDIA driver (300 MB)
-    - cosmic-session
-    - cosmic-terminal
-    - cosmic-files
-    - cosmic-wallpapers
-    - vulkan-swrast
-    - sddm
+    # live desktop: the TuxOS desktop itself (Hyprland + the TuxOS shell,
+    # usr/share/tuxos/desktop/tuxos/root copied in by customize-livefs.sh);
+    # greetd logs the live user in, the installer opens maximized under
+    # the bar (its Wi-Fi panel stays usable for this online installer)
+    - hyprland
+    - quickshell
+    - xdg-desktop-portal-hyprland
+    - qt6-wayland
+    - greetd
+    - cage
+    - kitty
+    - wl-clipboard
+    - grim
+    - slurp
+    - jq
+    - curl
+    - libnotify
+    - upower
+    - brightnessctl
+    - adwaita-fonts
+    - ttf-jetbrains-mono-nerd
+    - syntax-highlighting
+    - poppler
   packages-init:
     dinit:
       - artix-live-dinit
-      - sddm-dinit
+      - greetd-dinit

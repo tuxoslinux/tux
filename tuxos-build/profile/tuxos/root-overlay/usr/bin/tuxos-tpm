@@ -1,0 +1,171 @@
+#!/bin/bash
+# tuxos-tpm: unlock the encrypted disk with the TPM (SPEC round 7 #17), so
+# the PC starts without the disk password. GRUB itself asks the TPM
+# (tpm2_key_protector): a random key in its own LUKS slot is sealed to this
+# PC's firmware, option ROMs and Secure Boot state (PCRs 0, 2, 7) and kept on
+# the EFI partition; GRUB's first steps (its own early config) try it and
+# fall back to the password.
+# Secure Boot must be on (tuxos-secureboot): PCR 7 then holds the keys that
+# let shim, GRUB and the kernel start, so a changed boot loader cannot get
+# the key. (Not PCR 4: inside Linux it also holds the kernel GRUB loaded,
+# so a key sealed from Linux to it never matches what GRUB sees, and
+# grub-protect cannot seal to other values.) Kernel and GRUB updates need
+# nothing; after a firmware update or a new graphics card the TPM says no,
+# that start asks for the password once, and the boot service seals the key
+# again. While it is on, GRUB has no command line and its menu cannot be
+# edited, else anyone could start a root shell on the opened disk.
+#   tuxos-tpm status    (any user) "tpm yes|no", "disk encrypted|plain|bios",
+#                       "secureboot yes|no", "enabled yes|no"
+#   tuxos-tpm enable    (root, pkexec)
+#   tuxos-tpm disable   (root, pkexec) back to the password at every start
+#   tuxos-tpm reseal    (root; dinit tuxos-tpm at boot) seal again when the
+#                       PCRs changed since the last seal
+#   tuxos-tpm image     (root) rebuild GRUB with the TPM step (also used by
+#                       tuxos-secureboot)
+set -u
+dir=/etc/tuxos/tpm
+key="$dir/disk.key" conf="$dir/conf" pcrfile="$dir/pcrs"
+pub=/var/lib/tuxos/tpm-enabled
+id=TuxOS
+pcrs=0,2,7
+defaults=/etc/default/grub
+mods="all_video boot btrfs cat chain configfile cpuid cryptodisk echo efi_gop efifwsetup ext2 f2fs fat font gcry_rijndael gcry_sha256 gcry_sha512
+      gettext gfxmenu gfxterm gfxterm_background gzio halt help jpeg keystatus key_protector linux loadenv ls luks luks2 lvm minicmd normal ntfs
+      part_gpt part_msdos password_pbkdf2 pbkdf2 png probe reboot regexp search search_fs_file search_fs_uuid search_label sleep test tpm
+      tpm2_key_protector true video xfs zstd"
+
+die() { echo "tuxos-tpm: $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" = 0 ] || die "needs administrator rights"; }
+esp() { findmnt -no TARGET /boot/efi 2>/dev/null || findmnt -no TARGET /efi 2>/dev/null; }
+tpmdev() { for d in /dev/tpmrm0 /dev/tpm0; do [ -e "$d" ] && { echo "$d"; return 0; }; done; return 1; }
+# the LUKS partition under / ("" when / is not encrypted)
+luksdev() { # (lsblk: works for any user, cryptsetup status needs root)
+    local src dev
+    src=$(findmnt -nvo SOURCE / 2>/dev/null) || return 1
+    [ "$(lsblk -ndo TYPE "$src" 2>/dev/null)" = crypt ] || return 1
+    dev=$(lsblk -nslpo NAME,TYPE "$src" | awk '$2 == "part" || $2 == "disk" { print $1; exit }')
+    [ -n "$dev" ] && echo "$dev"
+}
+# Secure Boot on, with TuxOS' key in shim's list
+sb_ready() { command -v tuxos-secureboot >/dev/null && tuxos-secureboot status 2>/dev/null | tr '\n' ' ' | grep -q 'sb on mok enrolled shim yes'; }
+pcr_now() { for p in ${pcrs//,/ }; do cat "/sys/class/tpm/tpm0/pcr-sha256/$p" 2>/dev/null || echo none; done | sha256sum | cut -d' ' -f1; }
+
+seal() {
+    local e dev
+    e=$(esp) || die "no EFI partition mounted"
+    dev=$(tpmdev) || die "no TPM"
+    rm -f "$e/EFI/$id/tuxos-tpm.key"
+    grub-protect --action=add --protector=tpm2 --tpm2key --tpm2-device="$dev" --tpm2-keyfile="$key" \
+        --tpm2-pcrs="$pcrs" --tpm2-outfile="$e/EFI/$id/tuxos-tpm.key" >/dev/null || die "the TPM did not seal the key"
+    pcr_now > "$pcrfile"
+    sync
+}
+
+# GRUB with a first step that asks the TPM, then the password
+image() {
+    local e luks luuid nodash euuid early out sbat=()
+    e=$(esp) || die "no EFI partition mounted"
+    luks=$(luksdev) || die "the system disk is not encrypted"
+    luuid=$(cryptsetup luksUUID "$luks"); nodash=$(echo "$luuid" | tr -d - | tr 'A-F' 'a-f')
+    euuid=$(findmnt -no UUID "$e")
+    # (GRUB runs this with its minimal parser: plain commands only, no "if".
+    # cryptomount asks for the password by itself when the TPM says no.)
+    early=$(mktemp)
+    cat > "$early" <<EOF
+search --no-floppy --fs-uuid --set=esp $euuid
+tpm2_key_protector_init --tpm2key=(\$esp)/EFI/$id/tuxos-tpm.key
+cryptomount -u $luuid -P tpm2
+set root=(cryptouuid/$nodash)
+set prefix=(\$root)/boot/grub
+EOF
+    out="$e/EFI/$id/grubx64.efi"
+    [ -e "$e/EFI/$id/shimx64.efi" ] && [ -e /usr/share/grub/sbat.csv ] && sbat=(--sbat /usr/share/grub/sbat.csv)
+    # shellcheck disable=SC2086
+    # --disable-cli: no GRUB command line and no editing at all (the disk is
+    # open by then); a wrong password three times stops here
+    grub-mkimage -O x86_64-efi -d /usr/lib/grub/x86_64-efi -c "$early" -p "" --disable-cli "${sbat[@]}" -o "$out.new" $mods || { rm -f "$early"; die "grub-mkimage failed"; }
+    rm -f "$early"
+    mv -f "$out.new" "$out"
+    # the firmware's fallback path: GRUB itself unless shim sits there
+    if [ ! -e "$e/EFI/$id/shimx64.efi" ]; then install -D "$out" "$e/EFI/BOOT/BOOTX64.EFI"; else cp -f "$out" "$e/EFI/BOOT/grubx64.efi"; fi
+    # Secure Boot set up: sign it
+    command -v tuxos-secureboot >/dev/null && tuxos-secureboot sign
+}
+
+# the boot menu boots, but cannot be edited and has no command line
+lock_menu() {
+    sed -i '/^# >>> tuxos-tpm/,/^# <<< tuxos-tpm/d' "$defaults"
+    [ "$1" = on ] || return 0
+    local pw hash
+    pw=$(head -c 24 /dev/urandom | base64)
+    hash=$(printf '%s\n%s\n' "$pw" "$pw" | grub-mkpasswd-pbkdf2 2>/dev/null | sed -n 's/.*is \(grub\.pbkdf2\..*\)$/\1/p')
+    [ -n "$hash" ] || die "could not lock the boot menu"
+    cat >> "$defaults" <<EOF
+# >>> tuxos-tpm (the disk opens by itself: the menu is locked against editing)
+GRUB_USERS="tuxos-locked;0;pbkdf2;$hash"
+GRUB_UNRESTRICTED_ACCESS_LEVEL="1"
+GRUB_SIMPLE_ACCESS_LEVEL="1"
+GRUB_ADVANCED_ACCESS_LEVEL="1"
+# (recovery mode and firmware settings keep needing the superuser)
+# <<< tuxos-tpm
+EOF
+}
+
+case "${1:-}" in
+    status)
+        tpmdev >/dev/null && echo "tpm yes" || echo "tpm no"
+        if [ ! -d /sys/firmware/efi ]; then echo "disk bios"; elif luksdev >/dev/null; then echo "disk encrypted"; else echo "disk plain"; fi
+        sb_ready && echo "secureboot yes" || echo "secureboot no"
+        [ -e "$pub" ] && echo "enabled yes" || echo "enabled no" ;;
+    enable)
+        need_root
+        [ -d /sys/firmware/efi ] || die "this PC starts in BIOS mode: TPM unlock needs UEFI"
+        tpmdev >/dev/null || die "this PC has no TPM 2.0 (or it is off in the firmware settings)"
+        luks=$(luksdev) || die "the system disk is not encrypted"
+        command -v grub-protect >/dev/null || die "grub-protect is missing (GRUB 2.12 or newer)"
+        sb_ready || die "turn Secure Boot on first (Settings > Privacy & security): without it a changed boot loader could get the key"
+        [ -s /crypto_keyfile.bin ] || die "the disk's key file is missing (/crypto_keyfile.bin)"
+        install -d -m 700 "$dir"
+        slot=$(sed -n 's/^slot=//p' "$conf" 2>/dev/null)
+        if [ ! -s "$key" ] || [ -z "$slot" ]; then
+            # a slot left from an earlier try whose key is gone
+            [ -n "$slot" ] && cryptsetup luksKillSlot --batch-mode --key-file /crypto_keyfile.bin "$luks" "$slot" 2>/dev/null
+            slot=$(cryptsetup luksDump "$luks" | awk '/^Keyslots:/ { k = 1; next } k && /^[A-Z]/ { k = 0 } k && /^  [0-9]+: / { u[$1 + 0] = 1 } END { for (i = 0; i < 32; i++) if (!(i in u)) { print i; exit } }')
+            [ -n "$slot" ] || die "the disk has no free key slot"
+            head -c 32 /dev/urandom > "$key"; chmod 600 "$key"; sync
+            # a random key: few PBKDF2 rounds are enough, and GRUB opens it fast
+            cryptsetup luksAddKey --batch-mode --new-key-slot "$slot" --pbkdf pbkdf2 --pbkdf-force-iterations 1000 \
+                --key-file /crypto_keyfile.bin "$luks" "$key" || { rm -f "$key"; die "could not add the TPM's key to the disk"; }
+        fi
+        printf 'luks=%s\nslot=%s\n' "$luks" "$slot" > "$conf"; sync
+        lock_menu on
+        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || die "grub-mkconfig failed"
+        image
+        seal
+        mkdir -p "$(dirname "$pub")"; : > "$pub"
+        sync
+        echo ok ;;
+    disable)
+        need_root
+        luks=$(sed -n 's/^luks=//p' "$conf" 2>/dev/null); [ -n "$luks" ] || luks=$(luksdev)
+        slot=$(sed -n 's/^slot=//p' "$conf" 2>/dev/null)
+        if [ -n "$luks" ] && [ -n "$slot" ]; then cryptsetup luksKillSlot --batch-mode --key-file /crypto_keyfile.bin "$luks" "$slot" 2>/dev/null
+        elif [ -n "$luks" ] && [ -s "$key" ]; then cryptsetup luksRemoveKey "$luks" "$key" 2>/dev/null; fi
+        e=$(esp); [ -n "$e" ] && rm -f "$e/EFI/$id/tuxos-tpm.key"
+        lock_menu off
+        rm -f "$pub"
+        rm -rf "$dir"
+        # GRUB as the installer made it (with Secure Boot: shim's signed one)
+        if [ -n "$e" ] && [ -e "$e/EFI/$id/shimx64.efi" ] && command -v tuxos-secureboot >/dev/null; then tuxos-secureboot enable >/dev/null
+        else grub-install --target=x86_64-efi --efi-directory="$e" --bootloader-id="$id" >/dev/null 2>&1; fi
+        grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+        sync
+        echo ok ;;
+    reseal)
+        need_root
+        [ -e "$pub" ] && [ -s "$key" ] || exit 0
+        e=$(esp) && [ -s "$e/EFI/$id/tuxos-tpm.key" ] && [ "$(cat "$pcrfile" 2>/dev/null)" = "$(pcr_now)" ] && exit 0
+        seal && echo "tuxos-tpm: sealed again (the firmware or boot loader changed)" ;;
+    image) need_root; [ -e "$pub" ] || exit 0; image ;;
+    *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

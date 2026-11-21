@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Store
+Name[bg]=Магазин
+Comment=Apps, games and updates
+Comment[bg]=Приложения, игри и обновления
+Exec=tuxos-app store
+Icon=system-software-install
+Categories=System;PackageManager;
+Keywords=store;apps;install;update;software;flatpak;aur;games;
+StartupWMClass=tuxos-store

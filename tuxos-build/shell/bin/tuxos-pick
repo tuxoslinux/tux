@@ -1,0 +1,12 @@
+#!/bin/sh
+# tuxos-pick open|openmulti|folder|save [TITLE] [NAME] : TuxOS Files in pick
+# mode for scripts and the shell (the same as the file chooser portal);
+# prints the chosen paths, one per line; nothing when cancelled.
+mode="${1:-open}"
+out=$(mktemp)
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/tuxos"
+[ -e "$cfg/app-files.qml" ] || cfg=/etc/xdg/quickshell/tuxos
+TUXOS_PICK="$mode" TUXOS_PICK_TITLE="${2:-}" TUXOS_PICK_NAME="${3:-}" TUXOS_PICK_OUT="$out" TUXOS_PAGE="$HOME" \
+    QS_APP_ID=tuxos-files qs -p "$cfg/app-files.qml" >/dev/null 2>&1
+sed 's|^file://||' "$out" | while read -r p; do printf '%b\n' "$(printf '%s' "$p" | sed 's/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')"; done
+rm -f "$out"

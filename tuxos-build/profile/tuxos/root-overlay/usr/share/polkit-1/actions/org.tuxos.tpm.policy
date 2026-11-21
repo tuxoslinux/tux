@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS: TPM unlock from Settings; it changes how the disk
+     opens, so the password is asked -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.tpm">
+    <description>Unlock the disk with the TPM</description>
+    <description xml:lang="bg">Отключване на диска с TPM</description>
+    <message>TuxOS needs permission to change how the encrypted disk opens</message>
+    <message xml:lang="bg">TuxOS се нуждае от разрешение, за да промени как се отваря шифрованият диск</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-tpm</annotate>
+  </action>
+</policyconfig>

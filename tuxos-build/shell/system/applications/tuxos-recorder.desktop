@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sound recorder
+Name[bg]=Звукозапис
+Comment=Record your voice or anything you hear
+Comment[bg]=Запиши гласа си или каквото чуваш
+Exec=tuxos-app recorder
+Icon=audio-input-microphone
+Categories=AudioVideo;Audio;Recorder;
+Keywords=record;voice;microphone;memo;audio;
+StartupWMClass=tuxos-recorder

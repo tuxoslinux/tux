@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TuxOS lock v3 news</title>
+<style>
+:root {
+  --accent: #8fb8ff;
+  --text: #f4f7fb;
+  --muted: #8b95a5;
+  --line: rgba(200, 220, 255, 0.10);
+  --glass: rgba(10, 12, 16, 0.42);
+  --glass-line: rgba(210, 225, 255, 0.10);
+  --ui: "Adwaita Sans", "Noto Sans", sans-serif;
+  --mono: "JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--ui); color: var(--text); }
+
+.bg { position: absolute; inset: -80px; background: url("wallpaper.png") center / cover; filter: blur(36px) brightness(0.72); }
+.glow { position: absolute; inset: 0; background: radial-gradient(1100px 700px at 50% 30%, rgba(120, 165, 255, 0.07), transparent 70%); }
+.vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.5) 100%); }
+
+.glass {
+  background: var(--glass); border: 1px solid var(--glass-line);
+  box-shadow: 0 40px 120px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.035);
+  backdrop-filter: blur(40px);
+}
+
+/* motivational note, top of the right half (a new message every time the screen locks) */
+.note {
+  width: 340px; border-radius: 22px;
+  padding: 18px 22px; display: flex; align-items: center; gap: 16px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+}
+.note .ic { width: 40px; height: 40px; border-radius: 12px; background: rgba(143,184,255,0.14); color: var(--accent); display: grid; place-items: center; font-family: var(--mono); font-size: 19px; }
+.note .t { font-size: 18px; font-weight: 600; }
+.note .s { font-size: 14px; color: var(--muted); margin-top: 3px; }
+/* Linux news, top of the right half (fresh headlines from RSS when online) */
+.news { width: 340px; border-radius: 22px; padding: 18px 20px 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+.news .head { display: flex; align-items: center; gap: 10px; font-size: 12.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.news .head i { font-style: normal; font-family: var(--mono); color: var(--accent); font-size: 15px; letter-spacing: 0; }
+.news .head .more { margin-left: auto; font-family: var(--mono); font-size: 14px; color: var(--muted); }
+.item { padding: 11px 0; border-top: 1px solid var(--line); }
+.item:first-of-type { border-top: 0; }
+.item .h { font-size: 15px; font-weight: 500; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.item .m { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.item .m b { color: var(--accent); font-weight: 500; }
+
+.card {
+  position: absolute; left: 50%; top: 50%;
+  width: 1040px; height: 500px; transform: translate(-50%, -50%);
+  border-radius: 40px;
+  display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center;
+}
+.divider { height: 300px; background: var(--line); }
+
+.left { padding-left: 84px; align-self: start; padding-top: 70px; }
+.time { font-size: 96px; font-weight: 700; letter-spacing: -4px; line-height: 0.9; }
+.time span { color: var(--accent); }
+.date { margin-top: 14px; font-size: 18px; color: var(--muted); letter-spacing: 0.3px; }
+
+/* now playing */
+.np {
+  margin-top: 40px; width: 360px; padding: 14px; border-radius: 24px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+  display: grid; grid-template-columns: 76px 1fr; gap: 16px; align-items: center;
+}
+.art {
+  width: 76px; height: 76px; border-radius: 16px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), transparent 28%),
+    radial-gradient(circle at 70% 75%, #5b8def, transparent 55%),
+    linear-gradient(135deg, #1b2740, #0b0f18);
+}
+.song { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.artist { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+.bar { margin-top: 12px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); position: relative; }
+.bar::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 38%; border-radius: 2px; background: var(--accent); }
+.ctl { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 26px; padding-top: 4px; }
+.ctl i { font-style: normal; font-family: var(--mono); color: var(--text); font-size: 22px; opacity: 0.85; }
+.ctl .play { width: 42px; height: 42px; border-radius: 50%; background: var(--accent); color: #0b1424; display: grid; place-items: center; font-size: 16px; opacity: 1; }
+
+.right { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 70px 0 100px; }
+.pass {
+  width: 340px; height: 52px; border-radius: 26px;
+  background: rgba(0,0,0,0.30); border: 1px solid rgba(143,184,255,0.55);
+  display: flex; align-items: center; padding: 0 6px 0 22px;
+}
+.pass .dots { flex: 1; font-size: 20px; letter-spacing: 6px; }
+.pass .dots::after { content: ""; display: inline-block; width: 2px; height: 20px; background: var(--accent); vertical-align: -3px; margin-left: 4px; }
+.pass .go { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #0b1424; display: grid; place-items: center; font-family: var(--mono); font-size: 16px; }
+
+.corner { position: absolute; bottom: 26px; right: 30px; display: flex; gap: 6px; }
+.corner i { font-style: normal; font-family: var(--mono); font-size: 17px; color: var(--muted); width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="glow"></div><div class="vignette"></div>
+
+
+<div class="card glass">
+  <div class="left">
+    <div class="time">18<span>:</span>07</div>
+    <div class="date">Friday, 7 November</div>
+    <div class="np">
+      <div class="art"></div>
+      <div>
+        <div class="song">Afterglow</div>
+        <div class="artist">Lumen Drift</div>
+        <div class="bar"></div>
+      </div>
+      <div class="ctl"><i>&#xf04ae;</i><i class="play">&#xf03e4;</i><i>&#xf04ad;</i></div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="right">
+    <div class="news">
+      <div class="head"><i>&#xf09e;</i>Linux news<span class="more">&#xf054;</span></div>
+      <div class="item"><div class="h">Mesa 26.3 speeds up Vulkan shader compiles on RDNA cards</div><div class="m"><b>Phoronix</b> · 2 h ago</div></div>
+      <div class="item"><div class="h">Linux 7.4-rc1 is out with new scheduler work</div><div class="m"><b>LWN.net</b> · 5 h ago</div></div>
+    </div>
+    <div class="pass"><span class="dots">••••••</span><span class="go">&#xf061;</span></div>
+  </div>
+  <div class="corner"><i>&#xf0904;</i><i>&#xf021;</i><i>&#xf011;</i></div>
+</div>
+</body>
+</html>

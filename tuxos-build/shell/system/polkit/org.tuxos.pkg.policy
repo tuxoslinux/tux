@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- TuxOS Store: the password prompt says what it is for -->
+<policyconfig>
+  <vendor>TuxOS</vendor>
+  <action id="org.tuxos.pkg">
+    <description>Install, remove or update apps</description>
+    <description xml:lang="bg">Инсталиране, премахване или обновяване на приложения</description>
+    <message>The TuxOS Store needs the administrator password to change apps</message>
+    <message xml:lang="bg">Магазинът на TuxOS се нуждае от паролата на администратора, за да промени приложения</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/tuxos-pkg</annotate>
+  </action>
+</policyconfig>

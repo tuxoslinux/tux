@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Comment=Basic, scientific and unit / currency conversion
+Exec=tuxos-app calculator
+Icon=accessories-calculator
+Categories=Utility;Calculator;
+Keywords=calculator;math;convert;currency;units;
+StartupWMClass=tuxos-calculator

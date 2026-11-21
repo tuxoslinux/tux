@@ -1,0 +1,3 @@
+#!/bin/sh
+# tuxos-control [--page ID] : TuxOS Control (Settings)
+exec tuxos-app control "$@"

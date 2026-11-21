@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Backups
+Name[bg]=Резервни копия
+Comment=Copies of your files on another disk, by themselves
+Comment[bg]=Копия на файловете ти на друг диск, сами
+Exec=tuxos-app backups
+Icon=deja-dup
+Categories=System;Utility;Archiving;
+Keywords=backup;restore;copy;history;rsync;
+StartupWMClass=tuxos-backups

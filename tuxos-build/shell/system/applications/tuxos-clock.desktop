@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Comment=World clock, alarms, stopwatch and timers
+Exec=tuxos-app clock
+Icon=org.gnome.clocks
+Categories=Utility;Clock;
+Keywords=clock;alarm;timer;stopwatch;world;
+StartupWMClass=tuxos-clock

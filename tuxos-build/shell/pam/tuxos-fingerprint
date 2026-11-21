@@ -1,0 +1,5 @@
+#%PAM-1.0
+# TuxOS lock / login screen: fingerprint only (fprintd), used next to the
+# password; skipped silently where pam_fprintd is not installed.
+-auth     sufficient  pam_fprintd.so  max-tries=3 timeout=-1
+auth      required    pam_deny.so

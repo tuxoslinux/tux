@@ -1,0 +1,63 @@
+#!/bin/bash
+# tuxos-mirrors: the fastest mirrors, by themselves (SPEC round 7 #18).
+# Ranks the Artix, Arch and CachyOS mirror lists by measured speed
+# (rate-mirrors) and writes them back, fastest first. Runs once a month
+# (/etc/cron.monthly/tuxos-mirrors; anacron also runs it soon after the
+# first boot) and from Settings > Updates ("Find the fastest mirrors").
+#   tuxos-mirrors            rank now (as root)
+#   tuxos-mirrors auto       the monthly run: waits for the internet, not
+#                            while a game runs, lowest priority
+#   tuxos-mirrors status     "last EPOCH" and the first mirror of each list
+# A list is replaced only when the new one has at least 3 mirrors; the list
+# from before stays next to it as <name>.before. Mirrors the user removed
+# (commented out) stay out: only "Server =" lines are ranked.
+set -u
+dir="${TUXOS_MIRROR_DIR:-/etc/pacman.d}"
+stamp="${TUXOS_MIRROR_STAMP:-/var/lib/tuxos/mirrors-ranked}"
+
+first() { sed -n 's/^Server *= *//p' "$1" 2>/dev/null | head -1; }
+
+# rate one list: name of the list for rate-mirrors, file
+rank() {
+    local kind="$1" f="$dir/$2" new
+    [ -s "$f" ] || return 0
+    new=$(mktemp)
+    # rate-mirrors prints "Server = ..." lines, fastest first
+    if rate-mirrors --allow-root --disable-comments --protocol https "$kind" > "$new" 2>/dev/null \
+       && [ "$(grep -c '^Server' "$new")" -ge 3 ]; then
+        cp -f "$f" "$f.before"
+        { echo "## Ranked by speed by tuxos-mirrors on $(date +%F) (the list from before: $(basename "$f").before)"; grep '^Server' "$new"; } > "$f"
+        echo "$2: $(first "$f")"
+    else
+        echo "$2: kept (ranking gave no usable list)" >&2
+    fi
+    rm -f "$new"
+}
+
+run() {
+    [ "$(id -u)" = 0 ] || { echo "tuxos-mirrors: needs administrator rights" >&2; exit 1; }
+    command -v rate-mirrors >/dev/null || { echo "tuxos-mirrors: rate-mirrors is not installed" >&2; exit 1; }
+    rank artix mirrorlist
+    rank arch mirrorlist-arch
+    rank cachyos cachyos-mirrorlist
+    # the CPU-optimized CachyOS lists follow cachyos-mirrorlist
+    [ "$dir" = /etc/pacman.d ] && command -v tuxos-tune >/dev/null && tuxos-tune mirrors >/dev/null 2>&1
+    mkdir -p "$(dirname "$stamp")"; date +%s > "$stamp"
+}
+
+case "${1:-}" in
+    ""|now) run ;;
+    auto)
+        # online within 30 minutes, else next time
+        for _ in $(seq 1 60); do
+            curl -fsI --max-time 8 https://artixlinux.org >/dev/null 2>&1 && break
+            sleep 30
+        done
+        # never while a game runs (tuxos-gamed's state file)
+        for _ in $(seq 1 720); do [ -e /run/tuxos-gamed ] && [ -s /run/tuxos-gamed ] || break; sleep 60; done
+        exec nice -n 19 ionice -c 3 "$0" now ;;
+    status)
+        echo "last $(cat "$stamp" 2>/dev/null || echo 0)"
+        for f in mirrorlist mirrorlist-arch cachyos-mirrorlist; do echo "$f $(first "$dir/$f")"; done ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

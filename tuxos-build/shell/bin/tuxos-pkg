@@ -1,0 +1,127 @@
+#!/bin/sh
+# tuxos-pkg : the root half of the TuxOS Store, run through pkexec.
+#   tuxos-pkg install PKG...   install from the repositories
+#   tuxos-pkg remove PKG...    remove (with what only they needed)
+#   tuxos-pkg update           update everything; the versions before are
+#                              kept in /var/lib/tuxos/updates for undo
+#   tuxos-pkg undo             put back the versions from before the last
+#                              update (from pacman's package cache)
+#   tuxos-pkg undo PKG...      put back these packages only (kernel and
+#                              drivers too): the version before their last
+#                              upgrade (pacman's log), with the packages built
+#                              together with them (same versions, e.g. mesa,
+#                              vulkan-radeon, ...); the next update brings
+#                              the new version again
+#   tuxos-pkg recent [N]       the last N upgrades: date name old new
+set -u
+dir=/var/lib/tuxos/updates
+cmd="${1:-}"; shift 2>/dev/null || true
+valid() { for p in "$@"; do case "$p" in -*|*/*|'') echo "tuxos-pkg: bad name: $p" >&2; exit 2;; esac; done; }
+cache=/var/cache/pacman/pkg
+# a package file of an installed package rebuilt from its files and pacman's
+# own record of it (like the old bacman): the version before an update that
+# came with the installer (not in the cache) can still be put back
+keep_installed() { # name
+    name="$1"; ver=$(pacman -Q "$name" 2>/dev/null | cut -d' ' -f2) || return 1
+    ls "$cache/$name-$ver"-*.pkg.tar.* >/dev/null 2>&1 && return 0
+    db="/var/lib/pacman/local/$name-$ver"; [ -f "$db/desc" ] || return 1
+    arch=$(sed -n '/^%ARCH%$/{n;p;q}' "$db/desc")
+    work=$(mktemp -d /var/tmp/tuxos-keep.XXXXXX) || return 1
+    awk -v builddate="$(date +%s)" '
+        /^%[A-Z]+%$/ { k = $0; next } /^$/ { k = ""; next }
+        k == "%NAME%" { print "pkgname = " $0 } k == "%BASE%" { print "pkgbase = " $0 }
+        k == "%VERSION%" { print "pkgver = " $0 } k == "%DESC%" { print "pkgdesc = " $0 }
+        k == "%URL%" { print "url = " $0 } k == "%ARCH%" { print "arch = " $0 }
+        k == "%SIZE%" { print "size = " $0 } k == "%PACKAGER%" { print "packager = " $0 }
+        k == "%LICENSE%" { print "license = " $0 } k == "%GROUPS%" { print "group = " $0 }
+        k == "%DEPENDS%" { print "depend = " $0 } k == "%OPTDEPENDS%" { print "optdepend = " $0 }
+        k == "%PROVIDES%" { print "provides = " $0 } k == "%CONFLICTS%" { print "conflict = " $0 }
+        k == "%REPLACES%" { print "replaces = " $0 }
+        END { print "builddate = " builddate }' "$db/desc" > "$work/.PKGINFO"
+    [ -f "$db/install" ] && cp "$db/install" "$work/.INSTALL"
+    # the package's own files and folders, as they are on the disk now
+    pacman -Qlq "$name" | sed 's|^/||' > "$work/list"
+    { printf '.PKGINFO\n'; [ -f "$work/.INSTALL" ] && printf '.INSTALL\n'; } > "$work/meta"
+    out="$cache/$name-$ver-$arch.pkg.tar.zst"
+    ( cd "$work" && bsdtar -cf - --no-recursion -T meta ) > "$work/a.tar" &&
+    ( cd / && bsdtar -rf "$work/a.tar" --no-recursion -T "$work/list" 2>/dev/null; true ) &&
+    zstd -q -T0 -3 -c "$work/a.tar" > "$out.part" && mv -f "$out.part" "$out"
+    rc=$?
+    rm -rf -- "$work"
+    return $rc
+}
+case "$cmd" in
+    install) valid "$@"; exec pacman -S --needed --noconfirm --noprogressbar -- "$@" ;;
+    remove)  valid "$@"; exec pacman -Rns --noconfirm --noprogressbar -- "$@" ;;
+    update)
+        mkdir -p "$dir"
+        stamp=$(date +%Y%m%d-%H%M%S)
+        pacman -Q > "$dir/$stamp.before"
+        # the lists first, then every version that is about to change kept
+        # in the cache (Undo puts all of them back, not some)
+        pacman -Sy --noprogressbar; rc=$?
+        if [ $rc -eq 0 ]; then
+            pacman -Qu 2>/dev/null | grep -v '\[ignored\]' | cut -d' ' -f1 | while read -r p; do
+                keep_installed "$p" || echo "tuxos-pkg: could not keep $p" >&2
+            done
+            pacman -Su --noconfirm --noprogressbar; rc=$?
+        fi
+        pacman -Q > "$dir/$stamp.after"
+        # the shell warns when an update did not finish
+        if [ $rc -eq 0 ]; then echo "ok $(date +%s)"; else echo "failed $rc $(date +%s)"; fi > "$dir/result"
+        chmod 644 "$dir/result"
+        # keep the last 10 records
+        ls -1 "$dir"/*.before 2>/dev/null | head -n -10 | while read -r f; do rm -f "$f" "${f%.before}.after"; done
+        exit $rc ;;
+    undo)
+        if [ $# -gt 0 ]; then
+            valid "$@"
+            log=/var/log/pacman.log
+            files=""
+            for name in "$@"; do
+                now=$(pacman -Q "$name" 2>/dev/null | cut -d' ' -f2)
+                [ -n "$now" ] || { echo "tuxos-pkg: $name is not installed" >&2; continue; }
+                line=$(grep -E "\] upgraded $name \(" "$log" | tail -n1)
+                old=$(printf '%s' "$line" | sed -n 's/.*upgraded [^ ]* (\(.*\) -> \(.*\))$/\1/p')
+                new=$(printf '%s' "$line" | sed -n 's/.*upgraded [^ ]* (\(.*\) -> \(.*\))$/\2/p')
+                [ -n "$old" ] && [ "$new" = "$now" ] || { echo "tuxos-pkg: no earlier version of $name in the log" >&2; continue; }
+                # every package upgraded the same way at the same time (split packages)
+                stamp=$(printf '%s' "$line" | cut -d']' -f1)
+                grep -F "$stamp]" "$log" | sed -n "s/.*upgraded \([^ ]*\) ($old -> $new)$/\1/p" | sort -u > /tmp/tuxos-undo.$$
+                while read -r p; do
+                    [ "$(pacman -Q "$p" 2>/dev/null | cut -d' ' -f2)" = "$new" ] || continue
+                    f=$(ls -1 /var/cache/pacman/pkg/"$p-$old"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n1)
+                    if [ -n "$f" ]; then files="$files
+$f"; else echo "tuxos-pkg: $p $old is not in the cache any more" >&2; fi
+                done < /tmp/tuxos-undo.$$
+                rm -f /tmp/tuxos-undo.$$
+            done
+            [ -n "$files" ] || exit 1
+            printf '%s\n' "$files" | grep . | sort -u | xargs -d '\n' pacman -U --noconfirm --noprogressbar
+            exit $?
+        fi
+        last=$(ls -1 "$dir"/*.before 2>/dev/null | tail -n1)
+        [ -n "$last" ] || { echo "tuxos-pkg: no update to undo" >&2; exit 1; }
+        files=""; missing=""
+        while read -r name ver; do
+            now=$(pacman -Q "$name" 2>/dev/null | cut -d' ' -f2)
+            [ -n "$now" ] && [ "$now" != "$ver" ] || continue
+            f=$(ls -1 /var/cache/pacman/pkg/"$name-$ver"-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -n1)
+            if [ -n "$f" ]; then files="$files
+$f"; else missing="$missing $name"; fi
+        done < "$last"
+        # all or nothing: a half undo mixes old and new parts of one program
+        [ -n "$missing" ] && { echo "tuxos-pkg: cannot undo: not in the cache any more:$missing" >&2; exit 1; }
+        [ -n "$files" ] || { echo "tuxos-pkg: nothing to put back" >&2; exit 1; }
+        printf '%s\n' "$files" | grep . | xargs -d '\n' pacman -U --noconfirm --noprogressbar && mv "$last" "$last.undone" ;;
+    recent)
+        # the last upgrades: "date name old new" (newest first, each package
+        # once, only while that newer version is still installed), for Settings
+        pacman -Q > /tmp/tuxos-recent.$$
+        grep -E '\] upgraded ' /var/log/pacman.log | tac |
+            sed -n 's/^\[\([^]]*\)\] \[ALPM\] upgraded \([^ ]*\) (\(.*\) -> \(.*\))$/\1 \2 \3 \4/p' |
+            awk -v q=/tmp/tuxos-recent.$$ 'BEGIN { while ((getline l < q) > 0) { split(l, a, " "); v[a[1]] = a[2] } }
+                !seen[$2]++ && v[$2] == $4' | head -n "${1:-40}"
+        rm -f /tmp/tuxos-recent.$$ ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

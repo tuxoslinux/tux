@@ -1,10 +1,26 @@
 #!/bin/sh
 # "Install TuxOS" in the live session: describe this computer's hardware on
 # the installer's "Drivers" page, then start the installer as root (the live
-# user may use sudo without a password).
-# COSMIC's XWayland only accepts the live user's programs: let root's in
-xhost +si:localuser:root >/dev/null 2>&1 || true
-exec sudo --preserve-env=DISPLAY,XAUTHORITY,LANG,LC_ALL /bin/sh -c '
+# user may use sudo without a password). It runs as a Wayland window of the
+# TuxOS desktop; Hyprland shows it maximized under the bar.
+# Already open: bring it forward instead of starting a second one
+if pgrep -x calamares >/dev/null; then
+    hyprctl dispatch 'hl.dsp.focus({ window = "class:calamares" })' >/dev/null 2>&1
+    exit 0
+fi
+# in Hyprland: wait until the bar has reserved its space (the installer and
+# the shell start together; maximized before that, it would sit under the bar)
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    for _ in $(seq 1 40); do
+        r=$(hyprctl -j monitors 2>/dev/null | jq '[.[].reserved[]] | add // 0' 2>/dev/null)
+        [ "${r:-0}" -gt 0 ] 2>/dev/null && break
+        sleep 0.5
+    done
+fi
+# TUXOS_NO_HYPRLAND (tuxos-session: Hyprland could not start on this
+# graphics): the Desktop page picks XFCE and says why
+exec sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DISPLAY,XAUTHORITY,LANG,LC_ALL,TUXOS_NO_HYPRLAND /bin/sh -c '
     tuxos-drivers --calamares-conf /etc/calamares/modules/packagechooser_drivers.conf
-    export QT_QPA_PLATFORMTHEME=kde
+    [ -n "${TUXOS_NO_HYPRLAND:-}" ] && /usr/lib/tuxos/installer-no-hyprland
+    export QT_QPA_PLATFORMTHEME=kde QT_QPA_PLATFORM="wayland;xcb"
     exec calamares'

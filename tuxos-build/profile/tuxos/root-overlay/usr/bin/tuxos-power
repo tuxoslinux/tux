@@ -1,0 +1,29 @@
+#!/bin/sh
+# tuxos-power : laptop power settings that need root (TuxOS Control runs
+# it through pkexec; the active user needs no password, see
+# /usr/share/polkit-1/actions/org.tuxos.power.policy).
+#   tuxos-power charge-limit 80|90|100   stop charging at that %, kept across boots
+#   tuxos-power apply                    at boot: the saved charge limit (dinit tuxos-power)
+#   tuxos-power wake EPOCH               wake the PC from sleep at that time (Clock alarms)
+#   tuxos-power wake-clear               no wake-up
+set -u
+conf=/etc/tuxos/charge-limit
+limit_files() { ls /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null; }
+case "${1:-}" in
+    charge-limit)
+        v="${2:-}"
+        case "$v" in 50|60|70|80|90|100) ;; *) echo "tuxos-power: 50-100 in steps of 10" >&2; exit 2 ;; esac
+        files=$(limit_files); [ -n "$files" ] || { echo "tuxos-power: this laptop cannot limit charging" >&2; exit 1; }
+        for f in $files; do echo "$v" > "$f" || exit 1; done
+        mkdir -p /etc/tuxos; echo "$v" > "$conf" ;;
+    apply)
+        [ -r "$conf" ] || exit 0
+        v=$(cat "$conf")
+        for f in $(limit_files); do echo "$v" > "$f" 2>/dev/null; done; exit 0 ;;
+    wake)
+        t="${2:-}"; case "$t" in ''|*[!0-9]*) echo "tuxos-power: wake EPOCH" >&2; exit 2 ;; esac
+        echo 0 > /sys/class/rtc/rtc0/wakealarm && echo "$t" > /sys/class/rtc/rtc0/wakealarm ;;
+    wake-clear)
+        echo 0 > /sys/class/rtc/rtc0/wakealarm ;;
+    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

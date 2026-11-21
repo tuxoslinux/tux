@@ -1,0 +1,14 @@
+#!/bin/sh
+# tuxos-recovery-key: the encrypted disk's recovery key the installer made
+# (tuxoscrypt). The Welcome app shows it once at the first login; after
+# "I wrote it down" it is deleted from the disk (it still opens the disk).
+#   tuxos-recovery-key has     (any user) exit 0 when a key waits to be shown
+#   tuxos-recovery-key show    (root, pkexec) the key
+#   tuxos-recovery-key forget  (root, pkexec) delete the stored copy
+f=/var/lib/tuxos/recovery-key
+case "${1:-}" in
+    has) [ -e "$f" ] ;;
+    show) sed -n 's/^key //p' "$f" ;;
+    forget) [ -e "$f" ] && shred -u "$f" 2>/dev/null || rm -f "$f" ;;
+    *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

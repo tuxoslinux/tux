@@ -1,0 +1,36 @@
+#!/bin/sh
+# tuxos-brightness up|down|set N : laptop backlight (brightnessctl) or, on
+# desktops, external monitors over DDC/CI (ddcutil, VCP 0x10). The shell's
+# brightness flyout watches both.
+step=5
+case "$1" in
+    up) arg="+" ;; down) arg="-" ;; set) arg="=" ;; *) echo "usage: $0 up|down|set N" >&2; exit 2 ;;
+esac
+# tell the shell (brightness flyout); quiet if it is not running
+flyout() { qs -c tuxos ipc call shell brightness "$1" "$2" >/dev/null 2>&1 & }
+if ls /sys/class/backlight/* >/dev/null 2>&1; then
+    case "$arg" in
+        +) brightnessctl -e4 -n2 set "${step}%+" >/dev/null ;;
+        -) brightnessctl -e4 -n2 set "${step}%-" >/dev/null ;;
+        =) brightnessctl -e4 -n2 set "$2%" >/dev/null ;;
+    esac
+    flyout "$(brightnessctl -m -c backlight info | cut -d, -f4 | tr -d %)" "Built-in display"
+    exit 0
+fi
+command -v ddcutil >/dev/null || exit 1
+state="${XDG_RUNTIME_DIR:-/tmp}/tuxos-ddc"
+cur=$(cat "$state" 2>/dev/null)
+[ -n "$cur" ] || cur=$(ddcutil -t getvcp 10 2>/dev/null | awk '{print $4; exit}')
+[ -n "$cur" ] || exit 1
+case "$arg" in
+    +) new=$((cur + step)) ;; -) new=$((cur - step)) ;; =) new=$2 ;;
+esac
+[ "$new" -gt 100 ] && new=100
+[ "$new" -lt 0 ] && new=0
+echo "$new" > "$state"
+# every DDC-capable monitor follows
+flyout "$new" "$(ddcutil detect -t 2>/dev/null | awk -F: '/Monitor:/{print $3; exit}')"
+for d in $(ddcutil detect -t 2>/dev/null | awk '/^Display/{print $2}'); do
+    ddcutil -d "$d" --noverify setvcp 10 "$new" >/dev/null 2>&1 &
+done
+wait

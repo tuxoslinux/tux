@@ -1,0 +1,40 @@
+#!/bin/bash
+# tuxos-tuxtheme: "Share your setup" (SPEC round 5 #20). A .tuxtheme file
+# is a small archive: setup.json (accent, light / dark, glass, roundness,
+# bar and dock layout, dock apps, desktop names, ...) and the wallpaper.
+#   tuxos-tuxtheme export FILE [NAME]   write the current setup
+#   tuxos-tuxtheme open FILE            unpack it for a preview; prints the
+#                                       folder (setup.json + wallpaper.*)
+# Settings > Appearance applies a previewed one (only the keys below).
+set -u
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tuxos/shell.json"
+data="${XDG_DATA_HOME:-$HOME/.local/share}/tuxos"
+keys='["accent","lightMode","highContrast","glass","roundness","animations","barStyle","barAutoHide","dockAutoHide","pins","desktopNames","screenCorners","smartSymbols","seasonalTux","accentFromWallpaper","depthEffect"]'
+
+case "${1:-}" in
+    export)
+        out="${2:?file}"; name="${3:-My TuxOS setup}"
+        case "$out" in *.tuxtheme) ;; *) out="$out.tuxtheme" ;; esac
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        wp=$(jq -r '.wallpapers.default // empty' "$cfg" 2>/dev/null)
+        case "$wp" in shader:*) ;; *) wp="" ;; esac
+        jq --argjson keys "$keys" --arg name "$name" --arg shader "$wp" \
+            '{ name: $name, tuxtheme: 1 } + with_entries(select(.key as $k | $keys | index($k))) + (if $shader != "" then { wallpaper: $shader } else {} end)' \
+            "$cfg" > "$tmp/setup.json" || exit 1
+        if [ -z "$wp" ] && [ -s "$data/wallpaper.png" ]; then
+            # a JPEG keeps the file small
+            magick "$data/wallpaper.png" -resize '3840x2160>' -quality 90 "$tmp/wallpaper.jpg" 2>/dev/null || cp "$data/wallpaper.png" "$tmp/wallpaper.png"
+        fi
+        bsdtar -czf "$out" -C "$tmp" . && echo "$out" ;;
+    open)
+        f="${2:?file}"
+        dir="${XDG_CACHE_HOME:-$HOME/.cache}/tuxos/tuxtheme"
+        rm -rf "$dir"; mkdir -p "$dir"
+        # only these names, nothing outside the folder
+        bsdtar -xzf "$f" -C "$dir" --no-same-owner --no-same-permissions \
+            ./setup.json ./wallpaper.jpg ./wallpaper.png setup.json wallpaper.jpg wallpaper.png 2>/dev/null
+        jq -e '.tuxtheme == 1' "$dir/setup.json" >/dev/null 2>&1 || { echo "tuxos-tuxtheme: not a TuxOS setup file" >&2; exit 1; }
+        echo "$dir" ;;
+    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

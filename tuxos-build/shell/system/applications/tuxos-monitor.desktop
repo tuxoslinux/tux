@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=System manager
+Comment=Processes, CPU, memory, disks, network, GPU and services
+Exec=tuxos-app monitor
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Keywords=task;manager;process;kill;cpu;ram;gpu;monitor;
+StartupWMClass=tuxos-monitor

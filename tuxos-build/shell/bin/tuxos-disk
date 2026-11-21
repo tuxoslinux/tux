@@ -1,0 +1,57 @@
+#!/bin/sh
+# tuxos-disk : the root half of TuxOS Disks, run through pkexec.
+#   tuxos-disk write ISO DEV        write an ISO to a whole drive (progress on stderr)
+#   tuxos-disk format DEV FS LABEL  one partition, FS = vfat | exfat | ext4
+#   tuxos-disk smart DEV            SMART data as JSON (smartctl -j)
+# It refuses any drive that holds a mounted system folder (/, /boot, /home,
+# /efi, swap) and anything that is not a whole drive.
+set -u
+cmd="${1:-}"; shift || true
+fail() { echo "tuxos-disk: $*" >&2; exit 1; }
+check_dev() {
+    dev="$1"
+    case "$dev" in /dev/sd[a-z]|/dev/sd[a-z][a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9]|/dev/vd[a-z]) ;; *) fail "not a whole drive: $dev" ;; esac
+    [ -b "$dev" ] || fail "no such drive: $dev"
+    [ "$(lsblk -dno TYPE "$dev")" = disk ] || fail "not a whole drive: $dev"
+    if lsblk -nro MOUNTPOINTS "$dev" | grep -Eq '^(/|/boot.*|/home|/efi|\[SWAP\])$'; then fail "this drive holds the running system"; fi
+}
+case "$cmd" in
+    write)
+        iso="$1"; dev="$2"; check_dev "$dev"
+        [ -f "$iso" ] || fail "no such file: $iso"
+        for p in $(lsblk -nro PATH "$dev" | tail -n +2); do umount "$p" 2>/dev/null; done
+        dd if="$iso" of="$dev" bs=4M oflag=direct,sync status=progress conv=fsync || fail "writing failed"
+        sync
+        # read it back and compare with the ISO
+        size=$(stat -c %s "$iso")
+        a=$(head -c "$size" "$dev" | sha256sum | cut -d' ' -f1)
+        b=$(sha256sum "$iso" | cut -d' ' -f1)
+        [ "$a" = "$b" ] && echo "verified $a" || fail "the written copy does not match the ISO"
+        ;;
+    format)
+        dev="$1"; fs="$2"; label="${3:-USB}"; check_dev "$dev"
+        for p in $(lsblk -nro PATH "$dev" | tail -n +2); do umount "$p" 2>/dev/null; done
+        wipefs -a "$dev" >/dev/null || fail "could not clear the drive"
+        case "$fs" in
+            vfat)  parted -s "$dev" mklabel msdos mkpart primary fat32 1MiB 100% ;;
+            exfat) parted -s "$dev" mklabel gpt mkpart data 1MiB 100% ;;
+            ext4)  parted -s "$dev" mklabel gpt mkpart data ext4 1MiB 100% ;;
+            *) fail "unknown filesystem: $fs" ;;
+        esac || fail "could not make the partition"
+        udevadm settle
+        part=$(lsblk -nro PATH "$dev" | sed -n 2p)
+        [ -b "$part" ] || fail "the new partition did not show up"
+        case "$fs" in
+            vfat)  mkfs.vfat -F 32 -n "$(printf %s "$label" | cut -c1-11 | tr a-z A-Z)" "$part" ;;
+            exfat) mkfs.exfat -L "$(printf %s "$label" | cut -c1-15)" "$part" ;;
+            ext4)  mkfs.ext4 -q -F -L "$(printf %s "$label" | cut -c1-16)" "$part" ;;
+        esac >/dev/null || fail "formatting failed"
+        echo "formatted $part"
+        ;;
+    smart)
+        dev="$1"
+        case "$dev" in /dev/*) [ -b "$dev" ] || fail "no such drive" ;; *) fail "not a drive" ;; esac
+        smartctl -a -j "$dev"
+        ;;
+    *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Name[bg]=Файлове
+Comment=Browse and organise your files
+Comment[bg]=Разглеждай и подреждай файловете си
+Exec=tuxos-app files --page %u
+Icon=system-file-manager
+Categories=System;FileManager;Utility;
+MimeType=inode/directory;
+Keywords=folder;file;manager;explorer;browse;
+StartupWMClass=tuxos-files

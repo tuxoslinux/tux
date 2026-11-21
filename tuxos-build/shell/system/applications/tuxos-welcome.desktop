@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome
+Name[bg]=Добре дошли
+Comment=First steps with TuxOS
+Comment[bg]=Първи стъпки с TuxOS
+Exec=tuxos-app welcome
+Icon=help-about
+Categories=System;
+Keywords=welcome;start;tour;setup;first;
+StartupWMClass=tuxos-welcome
